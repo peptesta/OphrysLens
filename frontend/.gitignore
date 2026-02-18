@@ -16,6 +16,9 @@
 # production
 /build
 
+!public/logo.png
+!public/images/*.jpg
+
 # misc
 .DS_Store
 *.pem

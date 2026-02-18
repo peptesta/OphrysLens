@@ -1,13 +1,21 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, ChangeEvent } from "react";
 import { FolderUp, Loader2, ArrowRight } from "lucide-react";
+
+// 1. Estendiamo l'interfaccia di React per supportare gli attributi delle cartelle
+declare module 'react' {
+  interface InputHTMLAttributes<T> extends HTMLAttributes<T> {
+    webkitdirectory?: string;
+    directory?: string;
+  }
+}
 
 interface UploadSectionProps {
   fileCount: number;
   isTransforming: boolean;
-  processedCount: number; // Number of processed images
-  onFilesSelected: (e: React.ChangeEvent<HTMLInputElement>) => void;
+  processedCount: number;
+  onFilesSelected: (e: ChangeEvent<HTMLInputElement>) => void;
   onTransform: () => void;
 }
 
@@ -20,7 +28,6 @@ export default function UploadSection({
 }: UploadSectionProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Safe percentage calculation (avoids division by zero)
   const percentage = fileCount > 0 
     ? Math.round((processedCount / fileCount) * 100) 
     : 0;
@@ -38,20 +45,26 @@ export default function UploadSection({
         <p className="text-stone-500 mb-8 max-w-md mx-auto">
           Images will be sent to the server in batches.
         </p>
-        <p className="text-stone-500 font-medium mt-1">You can use this tool in order to crop and customize the bounding box made by the AI cropper</p>
+        <p className="text-stone-500 font-medium mt-1">
+          You can use this tool in order to crop and customize the bounding box made by the AI cropper
+        </p>
+        
         <label className="relative inline-block group">
           <div className="bg-emerald-50 text-emerald-800 font-bold py-3 px-8 rounded-xl border-2 border-dashed border-emerald-200 group-hover:bg-emerald-100 group-hover:border-emerald-400 cursor-pointer transition flex items-center gap-2">
             Browse Folders...
           </div>
+          {/* 2. Ora possiamo usare webkitdirectory e directory senza errori o 'any' */}
           <input 
             type="file" 
             ref={fileInputRef}
-            {...{ webkitdirectory: "", directory: "" } as any}
+            webkitdirectory="" 
+            directory=""
             multiple 
             onChange={onFilesSelected}
             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" 
           />
         </label>
+
         {fileCount > 0 && (
           <div className="mt-6 ml-4 p-4 bg-[#F0F7F3] rounded-xl inline-block border border-emerald-100">
             <p className="text-emerald-800 font-semibold">
@@ -64,44 +77,41 @@ export default function UploadSection({
       {/* ACTION AREA / PROGRESS BAR */}
       <div className="flex justify-center w-full">
         {isTransforming ? (
-          // --- LOADING BAR ---
-        <div className="w-full md:w-[600px] bg-white p-6 rounded-xl shadow-lg border border-emerald-100 animate-in fade-in slide-in-from-bottom-2">
-          <div className="flex justify-between items-center mb-2 gap-4">
-            <span className="text-sm font-bold text-emerald-800 flex items-center gap-2 flex-shrink-0">
-              <Loader2 size={16} className="animate-spin" /> 
-              Processing...
-            </span>
+          <div className="w-full md:w-[600px] bg-white p-6 rounded-xl shadow-lg border border-emerald-100 animate-in fade-in slide-in-from-bottom-2">
+            <div className="flex justify-between items-center mb-2 gap-4">
+              <span className="text-sm font-bold text-emerald-800 flex items-center gap-2 flex-shrink-0">
+                <Loader2 size={16} className="animate-spin" /> 
+                Processing...
+              </span>
 
-            <div className="flex items-center gap-3 text-sm font-bold text-emerald-600 font-mono whitespace-nowrap">
-              <span>
-                {processedCount} / {fileCount} ({percentage}%)
-              </span>
-              <span className="text-stone-300">|</span> {/* Separatore visivo opzionale */}
-              <span>
-                Tempo stimato: {Math.floor((fileCount * 2.5) / 60)}m {Math.round((fileCount * 2.5) % 60)}s      
-              </span>
+              <div className="flex items-center gap-3 text-sm font-bold text-emerald-600 font-mono whitespace-nowrap">
+                <span>
+                  {processedCount} / {fileCount} ({percentage}%)
+                </span>
+                <span className="text-stone-300">|</span>
+                <span>
+                  Tempo stimato: {Math.floor((fileCount * 2.5) / 60)}m {Math.round((fileCount * 2.5) % 60)}s      
+                </span>
+              </div>
             </div>
-          </div>
-  
-          {/* Bar Background */}
-          <div className="w-full bg-stone-100 rounded-full h-4 overflow-hidden shadow-inner relative">
-            <div 
-              className="bg-emerald-500 h-full rounded-full flex items-center justify-center relative overflow-hidden"
-              style={{ 
-                width: `${percentage}%`,
-                transition: "width 0.5s ease-out"
-              }}
-            >
-              <div className="absolute inset-0 bg-white/20 animate-pulse" />
+    
+            <div className="w-full bg-stone-100 rounded-full h-4 overflow-hidden shadow-inner relative">
+              <div 
+                className="bg-emerald-500 h-full rounded-full flex items-center justify-center relative overflow-hidden"
+                style={{ 
+                  width: `${percentage}%`,
+                  transition: "width 0.5s ease-out"
+                }}
+              >
+                <div className="absolute inset-0 bg-white/20 animate-pulse" />
+              </div>
             </div>
+            
+            <p className="text-xs text-stone-400 mt-2 text-center italic">
+              Sending images to server... please wait.
+            </p>
           </div>
-          
-          <p className="text-xs text-stone-400 mt-2 text-center italic">
-            Sending images to server... please wait.
-          </p>
-        </div>
         ) : (
-          // --- BUTTON ---
           <button
             onClick={onTransform}
             disabled={fileCount === 0}

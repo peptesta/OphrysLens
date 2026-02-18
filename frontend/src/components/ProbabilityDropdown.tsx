@@ -46,6 +46,7 @@ export default function ProbabilityDropdown({ probs }: ProbabilityDropdownProps)
       entries = Object.entries(probs).map(([k, v]) => [k, Number(v)]);
     }
   } catch (e) {
+    console.log("Error normalizing probabilities:", e);
     return null;
   }
 

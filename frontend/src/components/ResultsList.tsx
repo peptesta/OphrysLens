@@ -53,7 +53,6 @@ export default function ResultsList({
               if (totalBoxes > 0) {
                 for (let i = 0; i < totalBoxes; i++) {
                    const isModified = analysis?.modified?.[i];
-                   // @ts-ignore
                    const isEliminated = analysis?.eliminated?.[i]; 
 
                    if (isModified || isEliminated) {

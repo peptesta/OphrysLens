@@ -8,7 +8,6 @@ interface EditorCanvasProps {
   boxes: number[][];
   scores: number[];
   eliminated: boolean[];
-  modified: boolean[];
   isManual: boolean[];
   activeBoxIndex: number | null;
   mergeSelection: number[];
@@ -33,7 +32,6 @@ const EditorCanvas = forwardRef<HTMLImageElement, EditorCanvasProps>(({
   boxes,
   scores,
   eliminated,
-  modified,
   isManual,
   activeBoxIndex,
   mergeSelection,

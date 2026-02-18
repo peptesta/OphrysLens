@@ -10,7 +10,6 @@ import { useImageMetadata } from "@/hooks/useImageMetadata"; // Hook personalizz
 interface CompareViewProps {
   result: ApiResponse;
   preview: string;
-  _useGpu: boolean;
   analyzedMode: string | null;
   strategyName: string;
 }
@@ -25,7 +24,7 @@ function EmptyStateCard({ title }: { title: string }) {
   );
 }
 
-export default function CompareView({ result, preview, _useGpu, analyzedMode, strategyName }: CompareViewProps) {
+export default function CompareView({ result, preview, analyzedMode, strategyName }: CompareViewProps) {
   const [showMetadata, setShowMetadata] = useState(false);
   
   // Utilizziamo l'hook per estrarre i dati dall'immagine originale (preview)
@@ -139,7 +138,7 @@ export default function CompareView({ result, preview, _useGpu, analyzedMode, st
             <h3 className="font-bold text-stone-800 flex items-center gap-2 text-sm uppercase mb-4">📍 Location Metadata</h3>
             {metaLoading ? (
                <div className="h-48 bg-stone-50 animate-pulse rounded-xl flex items-center justify-center text-stone-400 text-xs italic">Fetching GPS data...</div>
-            ) : hasGps ? (
+            ) : hasGps && lat !== undefined && lon !== undefined ? (
               <div className="space-y-4">
                 <div className="bg-emerald-50 p-3 rounded-lg border border-emerald-100 flex justify-between items-center">
                    <div>

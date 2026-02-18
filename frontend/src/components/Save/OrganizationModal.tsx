@@ -1,9 +1,19 @@
 import { X, FolderInput, FileStack } from "lucide-react";
+import { ReactNode } from "react";
 
 interface OrganizationModalProps {
   isOpen: boolean;
   onClose: () => void;
   onConfirm: (organizeIntoFolders: boolean) => void;
+}
+
+// 1. Definiamo l'interfaccia per il sotto-componente
+interface SelectionButtonProps {
+  onClick: () => void;
+  icon: ReactNode;
+  title: string;
+  subtitle: string;
+  theme: 'emerald' | 'stone';
 }
 
 export default function OrganizationModal({ isOpen, onClose, onConfirm }: OrganizationModalProps) {
@@ -46,13 +56,13 @@ export default function OrganizationModal({ isOpen, onClose, onConfirm }: Organi
   );
 }
 
-// Sub-component
-const SelectionButton = ({ onClick, icon, title, subtitle, theme }: any) => {
+// 2. Applichiamo l'interfaccia al sub-componente rimuovendo 'any'
+const SelectionButton = ({ onClick, icon, title, subtitle, theme }: SelectionButtonProps) => {
   const isEmerald = theme === 'emerald';
   return (
     <button
       onClick={onClick}
-      className={`flex items-center justify-center gap-3 border p-4 rounded-xl transition group text-left
+      className={`flex items-center justify-center gap-3 border p-4 rounded-xl transition group text-left w-full
         ${isEmerald 
           ? 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100 hover:border-emerald-300' 
           : 'bg-stone-50 border-stone-200 hover:bg-stone-100 hover:border-stone-300'}`}

@@ -10,7 +10,7 @@ import { useImageMetadata } from "@/hooks/useImageMetadata"; // Hook personalizz
 interface CompareViewProps {
   result: ApiResponse;
   preview: string;
-  useGpu: boolean;
+  _useGpu: boolean;
   analyzedMode: string | null;
   strategyName: string;
 }
@@ -25,7 +25,7 @@ function EmptyStateCard({ title }: { title: string }) {
   );
 }
 
-export default function CompareView({ result, preview, useGpu, analyzedMode, strategyName }: CompareViewProps) {
+export default function CompareView({ result, preview, _useGpu, analyzedMode, strategyName }: CompareViewProps) {
   const [showMetadata, setShowMetadata] = useState(false);
   
   // Utilizziamo l'hook per estrarre i dati dall'immagine originale (preview)

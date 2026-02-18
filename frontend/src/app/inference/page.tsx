@@ -26,7 +26,7 @@ export default function OrchidDashboard() {
 
   // TRACKING STATE: What generated the current result?
   const [analyzedMode, setAnalyzedMode] = useState<string | null>(null);
-  const [analyzedStrategy, setAnalyzedStrategy] = useState<string | null>(null); // <--- NEW
+  const [analyzedStrategy, setAnalyzedStrategy] = useState<string | null>(null);
 
   // --- HELPERS ---
   const getCacheKey = (strat: string, crop: string, gpu: boolean, occ: boolean, ig: boolean) => {
@@ -39,10 +39,8 @@ export default function OrchidDashboard() {
     if (resultCache[key]) {
       setResult(resultCache[key]);
       setAnalyzedMode(newCrop);
-      setAnalyzedStrategy(newStrat); // <--- Update Strategy Tracker
+      setAnalyzedStrategy(newStrat);
     } 
-    // If MISS, we do nothing. The View will detect mismatch between 
-    // 'newStrat' and 'analyzedStrategy' and ask for analysis.
   };
 
   // --- EVENT HANDLERS ---
@@ -53,7 +51,7 @@ export default function OrchidDashboard() {
       setPreview(URL.createObjectURL(file));
       setResult(null);
       setAnalyzedMode(null);
-      setAnalyzedStrategy(null); // <--- Reset
+      setAnalyzedStrategy(null);
       setApiError(null);
       setResultCache({}); 
     }
@@ -93,7 +91,7 @@ export default function OrchidDashboard() {
     if (resultCache[currentKey]) {
       setResult(resultCache[currentKey]);
       setAnalyzedMode(cropMode);
-      setAnalyzedStrategy(modelStrategy); // <--- Update Strategy Tracker
+      setAnalyzedStrategy(modelStrategy);
       return;
     }
 
@@ -116,11 +114,11 @@ export default function OrchidDashboard() {
     try {
       const res = await fetch(API_URL, { method: "POST", body: formData });
       if (!res.ok) throw new Error(`Server Error: ${res.statusText}`);
-      const data = await res.json();
+      const data: ApiResponse = await res.json();
       
       setResult(data);
       setAnalyzedMode(cropMode);
-      setAnalyzedStrategy(modelStrategy); // <--- Update Strategy Tracker
+      setAnalyzedStrategy(modelStrategy);
 
       // Cache Logic
       const newCache = { ...resultCache };
@@ -135,7 +133,7 @@ export default function OrchidDashboard() {
            ...data,
            predicted_class: data.predicted_external_class || "", 
            confidence: data.confidence_external || 0,            
-           all_classes_probs: data.all_classes_probs_external || {}, 
+           all_classes_probs: data.all_classes_probs_external || [], 
            integrated_gradients: data.integrated_gradients_external,
            occlusion: data.occlusion_external,
         };
@@ -144,9 +142,11 @@ export default function OrchidDashboard() {
 
       setResultCache(newCache);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      setApiError(err.message || "Failed to connect to backend");
+      // Narrowing the error type to safely access the message
+      const errorMessage = err instanceof Error ? err.message : "Failed to connect to backend";
+      setApiError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -190,8 +190,8 @@ export default function OrchidDashboard() {
             preview={preview}
             currentCropMode={cropMode}     
             analyzedCropMode={analyzedMode} 
-            currentStrategy={modelStrategy}     // <--- Pass Current
-            analyzedStrategy={analyzedStrategy} // <--- Pass Analyzed
+            currentStrategy={modelStrategy}     
+            analyzedStrategy={analyzedStrategy} 
             useGpu={useGpu}
           />
         )}

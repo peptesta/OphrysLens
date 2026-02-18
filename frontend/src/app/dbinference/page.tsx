@@ -13,6 +13,12 @@ import OrganizationModal from "@/components/Save/OrganizationModal";
 // Utilities
 import { SaveStrategy, getBoxesForStrategy } from "@/utils/saveStrategies";
 
+// --- TYPES ---
+interface SaveMetadata {
+  filename: string;
+  boxes: number[][]; 
+}
+
 const ITEMS_PER_PAGE = 10;
 const BATCH_SIZE = 16; 
 const API_URL = 'http://localhost:5000/dbinference';
@@ -50,27 +56,19 @@ export default function FolderTransformer() {
 
   // --- ACTIONS ---
 
-  // 1. ACTION TO RESET EVERYTHING
   const handleBackToUpload = () => {
     if (window.confirm("Are you sure? All current results and edits will be lost.")) {
-      // Clear Data
       setFiles([]);
       setTransformedFiles([]);
       setOriginalTransformedFiles([]);
-      
-      // Reset UI / Pagination
       setProcessedCount(0);
       setCurrentPage(1);
       setIsTransforming(false);
-      
-      // Reset Save States
       setIsSavingRemote(false);
       setIsSaveDropdownOpen(false);
       setShowOrganizeModal(false);
       setPendingSaveStrategy(null);
       setPendingThreshold(undefined);
-      
-      // Switch View
       setShowResults(false);
     }
   };
@@ -92,11 +90,9 @@ export default function FolderTransformer() {
   
   const handleSaveClick = (strategy: SaveStrategy, threshold?: number) => {
     setIsSaveDropdownOpen(false);
-    
     setPendingSaveStrategy(strategy);
     setPendingThreshold(threshold);
 
-    // Skip modal only if it's strict Global Best (no custom threshold)
     if (strategy === 'global_best' && typeof threshold === 'undefined') {
       executeSaveRequest(strategy, false, undefined);
     } else {
@@ -111,97 +107,89 @@ export default function FolderTransformer() {
   };
 
   const executeSaveRequest = async (
-  strategy: SaveStrategy, 
-  folderOrganized: boolean, 
-  threshold?: number,
-  resize?: { width: number; height: number }
-) => {
-  if (transformedFiles.length === 0) return;
-  
-  setIsSavingRemote(true);
-  setShowOrganizeModal(false);
-  
-  const formData = new FormData();
-  
-  // Parametri globali
-  formData.append('folder_organized', String(folderOrganized));
-  if (resize) {
-    formData.append('resize_w', resize.width.toString());
-    formData.append('resize_h', resize.height.toString());
-  }
-
-  try {
-    // VELOCIZZAZIONE: Prepariamo tutti i blob in parallelo
-    const fileData = await Promise.all(
-      transformedFiles.map(async (file) => {
-        const res = await fetch(file.url);
-        const blob = await res.blob();
-        return { blob, name: file.name, originalFile: file };
-      })
-    );
-
-    const metadata: any[] = [];
-
-    fileData.forEach(({ blob, name, originalFile }) => {
-      // Appendiamo il file al FormData
-      formData.append('images_files', blob, name);
-      
-      // Calcolo strategia box
-      let baseStrategy = strategy;
-      if (typeof threshold === 'number') {
-        if (strategy === 'global_best') baseStrategy = 'global_all';
-        if (strategy === 'custom_best') baseStrategy = 'custom_all';
-      }
-
-      let boxesToSend = getBoxesForStrategy(originalFile, baseStrategy);
-
-      // Filtro Threshold
-      if (typeof threshold === 'number' && originalFile.analysis) {
-        boxesToSend = boxesToSend.filter((box, idx) => {
-          const score = originalFile.analysis!.scores[idx];
-          const isManual = originalFile.analysis!.isManual?.[idx];
-          return isManual || (score * 100) >= threshold;
-        });
-      }
-
-      if (boxesToSend.length > 0) {
-        metadata.push({ filename: name, boxes: boxesToSend });
-      }
-    });
-
-    if (metadata.length === 0) {
-      alert("Nessun crop corrisponde ai criteri di selezione.");
-      setIsSavingRemote(false);
-      return;
+    strategy: SaveStrategy, 
+    folderOrganized: boolean, 
+    threshold?: number,
+    resize?: { width: number; height: number }
+  ) => {
+    if (transformedFiles.length === 0) return;
+    
+    setIsSavingRemote(true);
+    setShowOrganizeModal(false);
+    
+    const formData = new FormData();
+    formData.append('folder_organized', String(folderOrganized));
+    if (resize) {
+      formData.append('resize_w', resize.width.toString());
+      formData.append('resize_h', resize.height.toString());
     }
 
-    formData.append('metadata', JSON.stringify(metadata));
-    
-    // Invio al backend
-    const response = await fetch(SAVE_API_URL, { method: 'POST', body: formData });
-    if (!response.ok) throw new Error("Errore nel salvataggio lato server");
+    try {
+      const fileData = await Promise.all(
+        transformedFiles.map(async (file) => {
+          const res = await fetch(file.url);
+          const blob = await res.blob();
+          return { blob, name: file.name, originalFile: file };
+        })
+      );
 
-    const zipBlob = await response.blob();
-    const downloadUrl = window.URL.createObjectURL(zipBlob);
-    const link = document.createElement('a');
-    link.href = downloadUrl;
-    
-    // NOME FILE DINAMICO: nome_cartella + opzioni
-    const resizeLabel = resize ? `_${resize.width}x${resize.height}` : "";
-    link.setAttribute('download', `${folderName}${resizeLabel}.zip`);
-    
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.URL.revokeObjectURL(downloadUrl);
+      const metadata: SaveMetadata[] = [];
 
-  } catch (error) {
-    console.error(error);
-    alert("Errore durante la generazione del dataset.");
-  } finally {
-    setIsSavingRemote(false);
-  }
-};
+      fileData.forEach(({ blob, name, originalFile }) => {
+        formData.append('images_files', blob, name);
+        
+        let baseStrategy = strategy;
+        if (typeof threshold === 'number') {
+          if (strategy === 'global_best') baseStrategy = 'global_all';
+          if (strategy === 'custom_best') baseStrategy = 'custom_all';
+        }
+
+        let boxesToSend = getBoxesForStrategy(originalFile, baseStrategy);
+
+        if (typeof threshold === 'number' && originalFile.analysis) {
+          boxesToSend = boxesToSend.filter((_, idx) => {
+            const score = originalFile.analysis!.scores[idx];
+            const isManual = originalFile.analysis!.isManual?.[idx];
+            return isManual || (score * 100) >= threshold;
+          });
+        }
+
+        if (boxesToSend.length > 0) {
+          metadata.push({ filename: name, boxes: boxesToSend });
+        }
+      });
+
+      if (metadata.length === 0) {
+        alert("Nessun crop corrisponde ai criteri di selezione.");
+        setIsSavingRemote(false);
+        return;
+      }
+
+      formData.append('metadata', JSON.stringify(metadata));
+      
+      const response = await fetch(SAVE_API_URL, { method: 'POST', body: formData });
+      if (!response.ok) throw new Error("Errore nel salvataggio lato server");
+
+      const zipBlob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(zipBlob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      
+      const resizeLabel = resize ? `_${resize.width}x${resize.height}` : "";
+      link.setAttribute('download', `${folderName}${resizeLabel}.zip`);
+      
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(downloadUrl);
+
+    } catch (error) {
+      console.error(error);
+      alert("Errore durante la generazione del dataset.");
+    } finally {
+      setIsSavingRemote(false);
+    }
+  };
 
   // --- API: TRANSFORM ---
   const handleTransform = async () => {
@@ -255,35 +243,33 @@ export default function FolderTransformer() {
 
   // --- UPLOAD ---
   const handleFolderUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-  if (!e.target.files?.length) return;
-  
-  const allFiles = Array.from(e.target.files);
-  
-  // Estrai il nome della cartella radice dal webkitRelativePath
-  // Esempio: "vacanze_2024/foto1.jpg" -> "vacanze_2024"
-  if (allFiles[0].webkitRelativePath) {
-    const pathParts = allFiles[0].webkitRelativePath.split('/');
-    if (pathParts.length > 1) {
-      setFolderName(pathParts[0]);
+    if (!e.target.files?.length) return;
+    
+    const allFiles = Array.from(e.target.files);
+    
+    if (allFiles[0].webkitRelativePath) {
+      const pathParts = allFiles[0].webkitRelativePath.split('/');
+      if (pathParts.length > 1) {
+        setFolderName(pathParts[0]);
+      }
     }
-  }
 
-  const validImages = allFiles.filter(f => 
-    f.type.startsWith("image/") && /\.(jpg|jpeg|png|webp)$/i.test(f.name)
-  );
-  
-  if (validImages.length > 0) {
-    setFiles(validImages.map(f => ({ 
-      name: f.name, 
-      url: URL.createObjectURL(f), 
-      file: f 
-    })));
-    setShowResults(false);
-    setProcessedCount(0);
-  } else {
-    alert("No valid images found.");
-  }
-};
+    const validImages = allFiles.filter(f => 
+      f.type.startsWith("image/") && /\.(jpg|jpeg|png|webp)$/i.test(f.name)
+    );
+    
+    if (validImages.length > 0) {
+      setFiles(validImages.map(f => ({ 
+        name: f.name, 
+        url: URL.createObjectURL(f), 
+        file: f 
+      })));
+      setShowResults(false);
+      setProcessedCount(0);
+    } else {
+      alert("No valid images found.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F6F4EF] text-[#2A2F2C] font-sans p-6 md:p-12 relative">
@@ -297,7 +283,6 @@ export default function FolderTransformer() {
           </p>
         </div>
         
-        {/* 2. BUTTON ATTACHED TO THE HANDLER */}
         {showResults && (
            <button 
              onClick={handleBackToUpload} 

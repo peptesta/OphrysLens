@@ -83,7 +83,6 @@ export default function ImageEditorModal({
               boxes={localBoxes}
               scores={localScores}
               eliminated={localEliminated}
-              modified={localModified}
               isManual={localIsManual}
               activeBoxIndex={activeBoxIndex}
               mergeSelection={mergeSelection}

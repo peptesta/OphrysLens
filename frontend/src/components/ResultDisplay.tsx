@@ -54,7 +54,6 @@ export default function ResultsDisplay({
       <CompareView 
         result={result} 
         preview={preview} 
-        useGpu={useGpu} 
         analyzedMode={analyzedCropMode} 
         strategyName={displayStrategyName} // <--- Pass Name
       />

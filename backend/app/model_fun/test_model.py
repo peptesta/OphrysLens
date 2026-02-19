@@ -7,9 +7,6 @@ from torch.nn import functional as F
 from torch.utils.data import DataLoader
 from torchvision import models
 from torcheval.metrics import MulticlassAccuracy, MulticlassF1Score, MulticlassPrecision, MulticlassRecall
-from app.model_fun.preprocessing_tools.dataset_tool import getDatasetFromFile
-
-from app.model_fun.explenability_tools.explainability import showAndTestImages, generateOutputImages
 
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -144,26 +141,6 @@ def modelLoader(SIXCLASS_MODEL_PATH, CLASS_SIZE, device):
 def deviceLoader():
     return torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
-# Questa funzione non è disponibile nel notebook jupyter, permette di visualizzare le immagini del dataset di test con un'interfaccia interattiva 
-# in questo modo è possibile visualizzare i risultati dell'Occlusion per ciascun punto
-# Questa funzione non è stata inserita nel notebook jupyter perché non sono riuscito ad implementare l'interfaccia interattiva in un notebook
-def testModelWrapper(CLASS_NAMES, PROCESSED_DATA_TEST_PATH, SIXCLASS_MODEL_PATH, BATCH_SIZE, NUM_WORKERS, DESTINATION_PATH, SLIDING_WINDOW_SIZE, STRIDE):
-    CLASS_SIZE = len(CLASS_NAMES)
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-    model = models.resnet18()
-    model.fc = nn.Linear(model.fc.in_features, CLASS_SIZE)
-    model_dict = torch.load(SIXCLASS_MODEL_PATH, weights_only=False)
-    model.load_state_dict(model_dict['model'])
-    model = model.to(device)
-    model.eval()
-    test_dataset = getDatasetFromFile(PROCESSED_DATA_TEST_PATH)
-    test_loader = DataLoader(test_dataset, BATCH_SIZE, shuffle=True, num_workers=NUM_WORKERS, prefetch_factor=2, persistent_workers=True)
-    testModel(model, test_loader, device, CLASS_NAMES, CLASS_SIZE)
-    if '--generate-results' in sys.argv:
-        generateOutputImages(test_dataset, model, device, CLASS_NAMES, DESTINATION_PATH, SLIDING_WINDOW_SIZE, STRIDE)
-    showAndTestImages(test_dataset, model, device, CLASS_NAMES, SLIDING_WINDOW_SIZE, STRIDE)
-
 # Prima di eseguire questo è codice e quindi visualizzare l'interfaccia interattiva è necessario configurare il file .env con i parametri corretti
 # e lanciare il comando python app/test_model.py --generate-results
 # o in alternativa modificare il seguente codice e inserire staticamente i parametri di ambiente
@@ -178,5 +155,3 @@ if __name__ == '__main__':
     DESTINATION_PATH = config['DESTINATION_PATH']
     SLIDING_WINDOW_SIZE = int(config['SLIDING_WINDOW_SIZE'])
     STRIDE = int(config['SLIDING_WINDOW_STRIDE'])
-
-    testModelWrapper(CLASS_NAMES, PROCESSED_DATA_TEST_PATH, SIXCLASS_MODEL_PATH, BATCH_SIZE, NUM_WORKERS, DESTINATION_PATH, SLIDING_WINDOW_SIZE, STRIDE)

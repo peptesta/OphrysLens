@@ -23,7 +23,7 @@ export default function NavBar() {
       <div className="flex items-center shrink-0">
         <Image
           src="/logo.png"
-          alt="OrchiTech Logo"
+          alt="OphrysLens Logo"
           width={40}
           height={40}
         />

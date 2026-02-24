@@ -1,0 +1,59 @@
+======================================================================
+ TEST REPORT
+======================================================================
+ Date: 2026-02-21 21:32:44
+ Dataset file: test_chunk_0.pt
+ Total images: 465
+======================================================================
+
+ RISULTATI
+======================================================================
+
+Accuracy: 0.7699 (358/465)
+
+F-Score:
+  Macro F1:     0.7804
+  Weighted F1:  0.7762
+
+  Per-class F1:
+    O. exaltata         : 0.8821
+    O. garganica        : 0.7403
+    O. incubacea        : 0.7642
+    O. majellensis      : 0.8163
+    O. sphegodes        : 0.6748
+    O. sphegodes_Palena : 0.8046
+
+Per-class Accuracy:
+  O. exaltata         : 0.8600 (86/100)
+  O. garganica        : 0.5877 (67/114)
+  O. incubacea        : 0.6438 (47/73)
+  O. majellensis      : 1.0000 (40/40)
+  O. sphegodes        : 0.9651 (83/86)
+  O. sphegodes_Palena : 0.6731 (35/52)
+
+Confusion Matrix:
+
+True\Pred      O. exaltO. gargaO. incubO. majelO. sphegO. spheg
+----------------------------------------------------------------------
+O. exaltata          86       0       0       1      13       0
+O. garganica          5      67       1       5      36       0
+O. incubacea          2       0      47       1      23       0
+O. majellensis        0       0       0      40       0       0
+O. sphegodes          2       0       0       1      83       0
+O. sphegodes_Palena       0       0       2      10       5      35
+
+======================================================================
+ CLASSIFICATION REPORT
+======================================================================
+                     precision    recall  f1-score   support
+
+        O. exaltata       0.91      0.86      0.88       100
+       O. garganica       1.00      0.59      0.74       114
+       O. incubacea       0.94      0.64      0.76        73
+     O. majellensis       0.69      1.00      0.82        40
+       O. sphegodes       0.52      0.97      0.67        86
+O. sphegodes_Palena       1.00      0.67      0.80        52
+
+           accuracy                           0.77       465
+          macro avg       0.84      0.79      0.78       465
+       weighted avg       0.85      0.77      0.78       465

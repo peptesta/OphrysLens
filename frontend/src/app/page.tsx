@@ -88,7 +88,7 @@ export default function LandingPage() {
       {/* Header */}
       <header className="w-full bg-[#F0F7F3] border-b border-[#D8D2C8] shadow-md p-8 flex flex-col items-center">
         <h1 className="text-5xl md:text-6xl font-extrabold text-emerald-900 flex items-center gap-3">
-          <span className="text-pink-600">🌿</span> Welcome to OrchiTech
+          <span className="text-pink-600">🌿</span> Welcome to OphrysLens
         </h1>
       </header>
 

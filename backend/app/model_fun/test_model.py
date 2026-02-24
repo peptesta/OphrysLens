@@ -132,7 +132,7 @@ def testModel(model, test_loader, device, classNames, classSize):
 def modelLoader(SIXCLASS_MODEL_PATH, CLASS_SIZE, device):
     model = models.resnet18()
     model.fc = nn.Linear(model.fc.in_features, CLASS_SIZE)
-    model_dict = torch.load(SIXCLASS_MODEL_PATH, weights_only=False)
+    model_dict = torch.load(SIXCLASS_MODEL_PATH, weights_only=False, map_location=device)
     model.load_state_dict(model_dict['model'])
     model = model.to(device)
     model.eval()

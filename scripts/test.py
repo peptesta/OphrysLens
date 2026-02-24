@@ -23,11 +23,11 @@ CLASS_NAMES = ['O. exaltata', 'O. garganica', 'O. incubacea', 'O. majellensis', 
 CLASS_SIZE = len(CLASS_NAMES)
 
 # Find all chunk files in the directory
-base_dir = '../datasets/test/cropped'
+base_dir = '../datasets/test/cropped_original'
 abs_base_dir = os.path.abspath(base_dir)
 
 print(f"Looking for all chunk files in: {abs_base_dir}")
-all_chunks = glob.glob(os.path.join(abs_base_dir, "*_chunk_*.pt"))
+all_chunks = glob.glob(os.path.join(abs_base_dir, "*.pt"))
 print(f"Found {len(all_chunks)} chunk files:")
 for chunk in all_chunks:
     print(f"  - {os.path.basename(chunk)}")

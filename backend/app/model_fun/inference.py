@@ -2,7 +2,7 @@ import torch
 from torchvision import models
 import torch.nn as nn
 from app.model_fun.preprocessing_tools.dataset_tool import augmentDataPath, SingleFolderDataset
-from app.model_fun.test_model import showAndTestImages, generateOutputImages
+# from app.model_fun.test_model import showAndTestImages, generateOutputImages I servizi di test sono inclusi nello scritp "backend/script/test.py"
 from app.model_fun.preprocess_data import getTransforms
 from PIL import Image
 from typing import List
@@ -61,7 +61,7 @@ def inferenceData(classNames, modelPath, datasetPath, width, height, mean, std, 
     )
     testInference(test_dataset, model, device, classNames)    
     # generateOutputImages(test_dataset, model, device, classNames, outputFolder, slidingWindowSize, stride)
-    showAndTestImages(test_dataset, model, device, classNames, slidingWindowSize, stride)
+    #showAndTestImages(test_dataset, model, device, classNames, slidingWindowSize, stride)
 
 
 def inference1vsAll(models, image, device, swapIndex):

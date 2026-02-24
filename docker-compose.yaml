@@ -20,7 +20,7 @@ services:
          - ./frontend:/app
          - /app/node_modules
       ports:
-         - "3000:3000" # Espone la porta di Streamlit
+         - "3000:3000"
       depends_on:
          - backend # Aspetta che il backend parta
       environment:

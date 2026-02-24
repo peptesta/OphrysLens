@@ -23,12 +23,12 @@ export default function NavBar() {
       <div className="flex items-center shrink-0">
         <Image
           src="/logo.png"
-          alt="OrchiTech Logo"
+          alt="OphrysLens Logo"
           width={40}
           height={40}
         />
         <h1 className="ml-3 text-xl md:text-2xl font-extrabold text-emerald-900 flex items-center gap-2">
-            OrchiTech
+            OphrysLens
         </h1>  
       </div>
 

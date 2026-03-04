@@ -1,35 +1,27 @@
-# Usa un'immagine Python leggera ma completa
+# Usa l'immagine slim come base
 FROM python:3.10-slim
 
-# Imposta la cartella di lavoro
 WORKDIR /app
 
-# 1. Installa le dipendenze di sistema
-RUN apt-get update && apt-get install -y \
+# 1. Installa dipendenze di sistema e pulisci la cache nello stesso layer
+RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
-# Copia il file dei requisiti
-COPY requirements.txt .
-
 # 2. Aggiorna pip
-RUN pip install --upgrade pip
+RUN pip install --no-cache-dir --upgrade pip
 
-# 3. Installa PyTorch versione CPU
-RUN pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+# 3. Installa PyTorch CPU
+RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
 
-# 4. Installa le librerie base
-RUN pip install flask python-dotenv requests
+# 4. Copia requirements e installa il resto
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Installa le altre librerie dal file requirements.txt
-RUN pip install -r requirements.txt
-
-# Copia tutto il resto del codice
+# 5. Copia il codice
 COPY . .
 
-# Flask di default ascolta su 5000
 EXPOSE 5000
 
-# Comando di default
 CMD ["python", "-m", "app.main"]

@@ -10,8 +10,6 @@ python-dotenv
 dotenv
 flask
 flask-cors
-jupyter
-notebook
 tqdm
 seaborn
 pandas

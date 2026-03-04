@@ -6,6 +6,17 @@ import { ApiResponse } from "@/types";
 import DashboardSidebar from "@/components/DashBoardSidebar";
 import ResultsDisplay from "@/components/ResultDisplay";
 
+// --- INTERFACCE PER I TIPI ---
+interface ModelInfo {
+  id: number;
+  filename: string;
+  label: string;
+}
+
+interface AvailableModelsResponse {
+  "6class": ModelInfo[];
+}
+
 const BASE_API_URL = "http://localhost:5000/inference";
 
 export default function OrchidDashboard() {
@@ -17,8 +28,8 @@ export default function OrchidDashboard() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [resultCache, setResultCache] = useState<Record<string, ApiResponse>>({});
 
-  // --- STATI MODELLI (Caricati dal Backend) ---
-  const [availableModels, setAvailableModels] = useState<{ "6class": any[] }>({ "6class": [] });
+  // --- STATI MODELLI (Tipizzato correttamente invece di string[]) ---
+  const [availableModels, setAvailableModels] = useState<AvailableModelsResponse>({ "6class": [] });
 
   // --- STATI CONFIGURAZIONE ---
   const [modelStrategy, setModelStrategy] = useState("standard");
@@ -36,7 +47,7 @@ export default function OrchidDashboard() {
   useEffect(() => {
     fetch(`${BASE_API_URL}/models/available`)
       .then((res) => res.json())
-      .then((data) => {
+      .then((data: AvailableModelsResponse) => {
         setAvailableModels(data);
         if (data["6class"]?.length > 0) {
           setSelectedModel6Class(data["6class"][0].filename);
@@ -82,7 +93,6 @@ export default function OrchidDashboard() {
       let finalData: ApiResponse;
 
       if (cropMode === "compare") {
-        // --- COMPARE: CROP VS NO-CROP ---
         const bodyOriginal = new FormData();
         bodyOriginal.append("image", selectedFile);
         bodyOriginal.append("use_crop", "false");
@@ -100,8 +110,8 @@ export default function OrchidDashboard() {
 
         if (!resOrig.ok || !resCrop.ok) throw new Error("Errore durante il confronto");
 
-        const dataOrig = await resOrig.json();
-        const dataCrop = await resCrop.json();
+        const dataOrig: ApiResponse = await resOrig.json();
+        const dataCrop: ApiResponse = await resCrop.json();
 
         finalData = {
           ...dataOrig,
@@ -111,7 +121,6 @@ export default function OrchidDashboard() {
           image_cropped: dataCrop.image_cropped,
         };
       } else {
-        // --- ANALISI SINGOLA ---
         const formData = new FormData();
         formData.append("image", selectedFile);
         formData.append("use_crop", cropMode === "external" ? "true" : "false");
@@ -127,7 +136,6 @@ export default function OrchidDashboard() {
         const explainFormData = new FormData();
         explainFormData.append("image", selectedFile);
         explainFormData.append("use_crop", cropMode === "external" ? "true" : "false");
-        // Le spiegazioni correntemente usano il modello 6-classi
         explainFormData.append("model_name", selectedModel6Class);
 
         if (showOcclusion) {
@@ -151,8 +159,11 @@ export default function OrchidDashboard() {
       setAnalyzedStrategy(modelStrategy);
       setResultCache(prev => ({ ...prev, [currentKey]: finalData }));
 
-    } catch (err: any) {
-      setApiError(err.message || "Errore sconosciuto");
+    } catch (err) {
+      // --- FIX ERRORE 154:19 ---
+      // In TypeScript, gli errori catturati sono di tipo 'unknown'
+      const errorMessage = err instanceof Error ? err.message : "Errore sconosciuto";
+      setApiError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -161,7 +172,14 @@ export default function OrchidDashboard() {
   return (
     <div className="h-screen bg-[#F6F4EF] text-[#2A2F2C] flex flex-col md:flex-row font-sans overflow-hidden">
       <DashboardSidebar
-        config={{ modelStrategy, cropMode, useGpu, showOcclusion, showIG, selectedModel6Class }}
+        config={{ 
+          modelStrategy, 
+          cropMode, 
+          useGpu, 
+          showOcclusion, 
+          showIG, 
+          selectedModel6Class 
+        }}
         availableModels={availableModels}
         setConfig={{ 
           setModelStrategy, 
@@ -183,7 +201,6 @@ export default function OrchidDashboard() {
           <p className="text-stone-500 font-medium italic">Seleziona un modello e analizza la specie</p>
         </header>
 
-        {/* ... Codice Preview ... */}
         {preview && !result && (
            <div className="max-w-4xl mx-auto border-2 border-dashed border-stone-300 rounded-2xl p-8 flex flex-col items-center justify-center bg-stone-50/50">
              <div className="relative w-full h-[500px] mb-4 p-2 bg-white rounded-xl shadow-sm border border-stone-100">

@@ -20,9 +20,9 @@ export const getScoreColor = (score: number, isManual: boolean) => {
   return "#15803d"; 
 };
 
-export const getArea = (box: number[]) => (box[2] - box[0]) * (box[3] - box[1]);
+const getArea = (box: number[]) => (box[2] - box[0]) * (box[3] - box[1]);
 
-export const getIntersectionArea = (boxA: number[], boxB: number[]) => {
+const getIntersectionArea = (boxA: number[], boxB: number[]) => {
     const x_overlap = Math.max(0, Math.min(boxA[2], boxB[2]) - Math.max(boxA[0], boxB[0]));
     const y_overlap = Math.max(0, Math.min(boxA[3], boxB[3]) - Math.max(boxA[1], boxB[1]));
     return x_overlap * y_overlap;

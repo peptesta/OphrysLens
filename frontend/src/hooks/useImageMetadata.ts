@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import exifr from 'exifr';
 
 // 1. Definiamo un'interfaccia per i metadati comuni
-export interface ImageMetadata {
+interface ImageMetadata {
   latitude?: number;
   longitude?: number;
   DateTimeOriginal?: Date | string;

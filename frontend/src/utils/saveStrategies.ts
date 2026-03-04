@@ -5,7 +5,7 @@ export type SaveStrategy = 'global_best' | 'global_all' | 'custom_best' | 'custo
 /**
  * Checks if a file has user modifications (manual boxes, eliminations, or edits).
  */
-export const isFileModified = (file: ImageFile): boolean => {
+const isFileModified = (file: ImageFile): boolean => {
   const a = file.analysis;
   if (!a) return false;
   return (

@@ -1,0 +1,29 @@
+services:
+  # Servizio Backend (Flask + PyTorch)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ophryslens-backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./backend/models:/app/models
+    environment:
+      - PYTHONUNBUFFERED=1
+      - FLASK_ENV=production
+    restart: unless-stopped
+
+  # Servizio Frontend (Next.js)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: ophryslens-frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:5000
+    depends_on:
+      - backend
+    restart: unless-stopped

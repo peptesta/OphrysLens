@@ -31,25 +31,21 @@ Il progetto è basato su un'architettura a microservizi orchestrata tramite Dock
 
 ### Home Principale
 
-![Dashboard Screenshot](docs/images/frontend-dashboard.png)
+![Dashboard Screenshot](docs/images/home.png)
 
 ---
 
-### Caricamento Immagine e Configurazione Parametri
+### Caricamento Immagine, Configurazione Parametri e Mappe di Calore
 
-![Upload Screenshot](docs/images/frontend-upload.png)
-
----
-
-### Visualizzazione Risultati e Mappe di Calore
-
-![Results Screenshot](docs/images/frontend-results.png)
+![Upload Screenshot](docs/images/compare.png)
 
 ---
 
-### GUI per il preprocessing di cartelle di immagini
+### Visualizzazione Bounding Box e Intervento Manuale
 
-![Preprocessing GUI](docs/images/preprocessing_gui.png)
+![Results Screenshot](docs/images/bounding_box.png)
+
+---
 
 ## Requisiti di Sistema
 

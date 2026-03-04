@@ -1,16 +1,7 @@
-torcheval
 captum
 numpy
 matplotlib
-pandas
-scikit-learn
-opencv-python
-pillow
-python-dotenv
-dotenv
 flask
 flask-cors
-tqdm
-seaborn
-pandas
+dotenv
 

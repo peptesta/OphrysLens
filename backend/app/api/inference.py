@@ -1,27 +1,27 @@
 # --- IMPORTS ---
 import io
-import torch
-import torch.nn.functional as F
-from flask import Flask, request, jsonify, Blueprint
-from flask_cors import CORS
+import os
+from flask import request, jsonify, Blueprint
 from PIL import Image
 from dotenv import dotenv_values
-import traceback
-from concurrent.futures import ThreadPoolExecutor, as_completed
-import base64
 
 # --- LOCAL IMPORTS ---
 from app import model_state                                 
 from app.model_fun.preprocess_data import getTransforms     
-from app.fun.tta_logic import perform_inference
-from app.fun.explainability_fun import (
+from app.model_fun.inference_handler import predict_6class, predict_1vsall
+from app.model_fun.explainability_fun import (
     generate_explanation,                                              
     image_to_base64                                                               
 )
 
-# Initialize Blueprint
-inference_bp = Blueprint('inference', __name__)
+# Tentativo di importazione del modulo di cropping
+try:
+    from app.cropping_fun.fasterrcnn_crop import crop
+    HAS_EXTERNAL_CROP = True
+except ImportError:
+    HAS_EXTERNAL_CROP = False
 
+inference_bp = Blueprint('inference', __name__)
 config = dotenv_values(".env")
 
 WIDTH = int(config.get("WIDTH", 256))
@@ -29,284 +29,167 @@ HEIGHT = int(config.get("HEIGHT", 512))
 MEAN = [float(x) for x in config.get("MEAN", '0.5414286851882935 0.5396731495857239 0.3529253602027893').split()]
 STD = [float(x) for x in config.get("STD", '0.2102500945329666 0.23136012256145477 0.19928686320781708').split()]
 
-try:
-    from app.cropping_fun.fasterrcnn_crop import crop
-    HAS_EXTERNAL_CROP = True
-except ImportError:
-    HAS_EXTERNAL_CROP = False
+def get_processed_tensor(image_file, transform_pipeline, device):
+    """Helper per gestire il caricamento e l'eventuale crop dell'immagine"""
+    use_crop = request.form.get('use_crop', 'false').lower() == 'true'
+    image = Image.open(io.BytesIO(image_file.read())).convert('RGB')
+    
+    image_to_process = image
+    crop_executed = False
 
-def process_single_image(image_data, model, onevall_models, device, CLASS_NAMES, 
-                         transform_pipeline, model_strategy, crop_mode, explain_method):
+    if use_crop and HAS_EXTERNAL_CROP:
+        try:
+            cropped_img, _, _ = crop(image.copy())
+            if cropped_img is not None:
+                image_to_process = cropped_img
+                crop_executed = True
+        except Exception as e:
+            print(f"Crop failed, using original: {e}")
+
+    tensor = transform_pipeline(image_to_process).unsqueeze(0).to(device)
+    return tensor, image, image_to_process, crop_executed
+
+@inference_bp.route('/inference/6class', methods=['POST'])
+def run_6class_inference():
+    # Otteniamo il nome del modello dal frontend
+    selected_model_name = request.form.get('model_name')
+    model, device = model_state.get_6class_model_by_name(selected_model_name)
+    _, _, class_names = model_state.get_1vsall_resources()
+    
+    if model is None: return jsonify({'error': 'Selected 6class model not found or loaded'}), 500
+    
     try:
-        # 1. Load Image
-        if isinstance(image_data, bytes):
-            image = Image.open(io.BytesIO(image_data)).convert('RGB')
-        else:
-            image = Image.open(io.BytesIO(image_data.read())).convert('RGB')
+        image_file = request.files.get('image')
+        if not image_file: return jsonify({'error': 'No image provided'}), 400
         
-        tensor_original = transform_pipeline(image).unsqueeze(0).to(device)
+        transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
+        tensor, _, cropped_img, did_crop = get_processed_tensor(image_file, transform_pipeline, device)
         
-        # 2. Cropping logic
-        image_cropped = None
-        tensor_cropped = None
-        crop_error = None
+        idx, conf, probs, err = predict_6class(model, tensor, device)
         
-        if crop_mode in ['external', 'compare'] and HAS_EXTERNAL_CROP:
-            try:
-                image_cropped, _, _ = crop(image.copy())
-                if image_cropped is not None:
-                    tensor_cropped = transform_pipeline(image_cropped).unsqueeze(0).to(device)
-            except Exception as e:
-                crop_error = f"Cropping failed: {str(e)}"
-        
-        # 3. Determine Tensors
-        primary_tensor = tensor_cropped if (crop_mode == "external" and tensor_cropped is not None) else tensor_original
-        secondary_tensor = tensor_cropped if (crop_mode == "compare") else None
-        
-        # 4. Run Inference
-        prim_idx, prim_conf, prim_probs, prim_err = perform_inference(
-            model, onevall_models, primary_tensor, model_strategy, device
-        )
-        
-        # 5. Explainability Logic
-        # Helper to handle 'both' or specific methods
-        def get_xai(m, t, idx):
-            if idx == -1: return {}
-            xai_results = {}
-            methods = ['occlusion', 'integrated_gradients'] if explain_method == 'both' else [explain_method]
-            for meth in methods:
-                if meth in ['occlusion', 'integrated_gradients']:
-                    xai_results[meth] = generate_explanation(m, t, idx, meth)
-            return xai_results
-
-        primary_xai = get_xai(model, primary_tensor, prim_idx)
-
-        # 6. Build Result
-        result = {
+        return jsonify({
             'success': True,
-            'predicted_class': CLASS_NAMES[prim_idx] if prim_idx != -1 else "Unknown",
-            'confidence': prim_conf,
-            'all_classes_probs': prim_probs,
-            'occlusion': primary_xai.get('occlusion'),
-            'integrated_gradients': primary_xai.get('integrated_gradients'),
-            'error': prim_err or crop_error,
-        }
-
-        if image_cropped is not None:
-            result['image_cropped'] = image_to_base64(image_cropped)
-        
-        # 7. Handle Comparison Mode
-        if secondary_tensor is not None:
-            sec_idx, sec_conf, sec_probs, _ = perform_inference(
-                model, onevall_models, secondary_tensor, model_strategy, device
-            )
-            secondary_xai = get_xai(model, secondary_tensor, sec_idx)
-            
-            result.update({
-                'predicted_class_cropped': CLASS_NAMES[sec_idx] if sec_idx != -1 else "Unknown",
-                'confidence_cropped': sec_conf,
-                'all_classes_probs_cropped': sec_probs,
-                'occlusion_cropped': secondary_xai.get('occlusion'),
-                'integrated_gradients_cropped': secondary_xai.get('integrated_gradients'),
-            })
-        
-        return result
-        
+            'model_type': '6class',
+            'model_name_used': selected_model_name or "default",
+            'crop_applied': did_crop,
+            'predicted_class': class_names[idx] if idx != -1 else "Unknown",
+            'confidence': conf,
+            'all_classes_probs': probs,
+            'image_cropped': image_to_base64(cropped_img) if did_crop else None,
+            'error': err
+        })
     except Exception as e:
-        return {'success': False, 'error': str(e), 'traceback': traceback.format_exc()}
-
-@inference_bp.route('/inference', methods=['POST'])
-def run_inference_endpoint():
-    """Single image inference endpoint (backwards compatible)"""
-    model, onevall_models, device, CLASS_NAMES = model_state.get_models()
-    
-    if model is None:
-        return jsonify({'error': 'Models not loaded'}), 500
-    
-    try:
-        image_file = request.files['image']
-        model_strategy = request.form.get("model_strategy", "standard")
-        crop_mode = request.form.get("crop_mode", "integrated")
-        explain_method = request.form.get("explain_method", "none")
-        
-        transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
-        
-        result = process_single_image(
-            image_file, model, onevall_models, device, CLASS_NAMES,
-            transform_pipeline, model_strategy, crop_mode, explain_method
-        )
-        
-        if not result['success']:
-            return jsonify({'error': result['error']}), 500
-            
-        # Add image data for single request
-        image_file.seek(0)
-        original_image = Image.open(io.BytesIO(image_file.read())).convert('RGB')
-        result['image'] = image_to_base64(original_image)
-        
-        return jsonify(result)
-        
-    except Exception as e:
-        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
-@inference_bp.route('/inference/batch', methods=['POST'])
-def run_batch_inference_endpoint():
-    """
-    Batch inference endpoint with threading support.
-    
-    Expected form data:
-    - images: multiple files
-    - model_strategy: str (default: "standard")
-    - crop_mode: str (default: "integrated") 
-    - use_smart_crop: str "true"/"false" (default: "false")
-    - max_workers: int (default: 4)
-    """
-    model, onevall_models, device, CLASS_NAMES = model_state.get_models()
-    
-    if model is None:
-        return jsonify({'error': 'Models not loaded'}), 500
+@inference_bp.route('/inference/1vsall', methods=['POST'])
+def run_1vsall_inference():
+    # La strategia 1vsall usa l'ensemble fisso
+    onevall_models, device, class_names = model_state.get_1vsall_resources()
+    if not onevall_models: return jsonify({'error': '1vsAll models not loaded'}), 500
     
     try:
-        # Get parameters
-        model_strategy = request.form.get("model_strategy", "standard")
-        crop_mode = request.form.get("crop_mode", "integrated")
-        use_smart_crop = request.form.get("use_smart_crop", "false").lower() == "true"
-        max_workers = int(request.form.get("max_workers", 4))
-        
-        # Override crop_mode if use_smart_crop is specified
-        if use_smart_crop:
-            crop_mode = "external"  # Use smart cropping
-        else:
-            crop_mode = "integrated"  # No smart cropping
-        
-        # Get all images
-        images = request.files.getlist('images')
-        if not images:
-            return jsonify({'error': 'No images provided'}), 400
-        
-        transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
-        
-        results = []
-        errors = []
-        
-        # Process images in parallel using ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all tasks
-            future_to_idx = {
-                executor.submit(
-                    process_single_image,
-                    img, model, onevall_models, device, CLASS_NAMES,
-                    transform_pipeline, model_strategy, crop_mode, "none"
-                ): idx 
-                for idx, img in enumerate(images)
-            }
+        image_file = request.files.get('image')
+        if not image_file: return jsonify({'error': 'No image provided'}), 400
             
-            # Collect results as they complete
-            for future in as_completed(future_to_idx):
-                idx = future_to_idx[future]
-                try:
-                    result = future.result()
-                    if result['success']:
-                        results.append({
-                            'index': idx,
-                            'filename': images[idx].filename,
-                            **result
-                        })
-                    else:
-                        errors.append({
-                            'index': idx,
-                            'filename': images[idx].filename,
-                            'error': result['error']
-                        })
-                except Exception as e:
-                    errors.append({
-                        'index': idx,
-                        'filename': images[idx].filename,
-                        'error': str(e)
-                    })
+        transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
+        tensor, _, cropped_img, did_crop = get_processed_tensor(image_file, transform_pipeline, device)
         
-        # Sort results by index to maintain order
-        results.sort(key=lambda x: x['index'])
-        errors.sort(key=lambda x: x['index'])
+        idx, conf, probs, err = predict_1vsall(onevall_models, tensor, device)
         
         return jsonify({
-            'total_processed': len(results),
-            'total_errors': len(errors),
-            'crop_mode_used': crop_mode,
-            'results': results,
-            'errors': errors
+            'success': True,
+            'model_type': '1vsall',
+            'crop_applied': did_crop,
+            'predicted_class': class_names[idx] if idx != -1 else "Unknown",
+            'confidence': conf,
+            'all_classes_probs': probs,
+            'image_cropped': image_to_base64(cropped_img) if did_crop else None,
+            'error': err
         })
-        
     except Exception as e:
-        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
-
-@inference_bp.route('/inference/benchmark', methods=['POST'])
-def run_benchmark_inference():
-    """
-    Specialized endpoint for benchmark testing.
-    Returns predictions in a format easy to parse for metrics calculation.
-    """
-    model, onevall_models, device, CLASS_NAMES = model_state.get_models()
     
-    if model is None:
-        return jsonify({'error': 'Models not loaded'}), 500
+@inference_bp.route('/inference/generate_occlusion', methods=['POST'])
+def run_occlusion_endpoint():
+    selected_model_name = request.form.get('model_name')
+    model, device = model_state.get_6class_model_by_name(selected_model_name)
+    _, _, class_names = model_state.get_1vsall_resources()
+    
+    if model is None: return jsonify({'error': 'Base model not loaded'}), 500
     
     try:
-        model_strategy = request.form.get("model_strategy", "standard")
-        use_smart_crop = request.form.get("use_smart_crop", "false").lower() == "true"
-        max_workers = int(request.form.get("max_workers", 4))
-        
-        crop_mode = "external" if use_smart_crop else "integrated"
-        
-        images = request.files.getlist('images')
-        labels = request.form.getlist('labels')  # Expected class labels
-        
-        if not images:
-            return jsonify({'error': 'No images provided'}), 400
-        
-        transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
-        
-        predictions = []
-        
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            future_to_info = {
-                executor.submit(
-                    process_single_image,
-                    img, model, onevall_models, device, CLASS_NAMES,
-                    transform_pipeline, model_strategy, crop_mode, "none"
-                ): {'idx': i, 'label': labels[i] if i < len(labels) else None, 'filename': img.filename}
-                for i, img in enumerate(images)
-            }
+        image_file = request.files.get('image')
+        if not image_file: return jsonify({'error': 'No image provided'}), 400
             
-            for future in as_completed(future_to_info):
-                info = future_to_info[future]
-                try:
-                    result = future.result()
-                    predictions.append({
-                        'true_label': info['label'],
-                        'predicted_label': result.get('predicted_class') if result['success'] else None,
-                        'confidence': result.get('confidence', 0),
-                        'success': result['success'],
-                        'error': result.get('error'),
-                        'filename': info['filename']
-                    })
-                except Exception as e:
-                    predictions.append({
-                        'true_label': info['label'],
-                        'predicted_label': None,
-                        'success': False,
-                        'error': str(e),
-                        'filename': info['filename']
-                    })
+        transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
+        tensor, original_img, processed_img, did_crop = get_processed_tensor(image_file, transform_pipeline, device)
+        
+        idx, conf, _, _ = predict_6class(model, tensor, device)
+        if idx == -1: return jsonify({'error': 'Prediction failed'}), 400
+
+        explanation_base64 = generate_explanation(model, tensor, idx, 'occlusion')
         
         return jsonify({
-            'predictions': predictions,
-            'model_strategy': model_strategy,
-            'use_smart_crop': use_smart_crop
+            'success': True,
+            'method': 'occlusion',
+            'crop_applied': did_crop,
+            'predicted_class': class_names[idx],
+            'explanation_image': explanation_base64,
+            'original_image': image_to_base64(original_img),
+            'processed_image': image_to_base64(processed_img) if did_crop else None
         })
-        
     except Exception as e:
-        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+@inference_bp.route('/inference/generate_explain', methods=['POST'])
+def run_explain_endpoint():
+    selected_model_name = request.form.get('model_name')
+    model, device = model_state.get_6class_model_by_name(selected_model_name)
+    _, _, class_names = model_state.get_1vsall_resources()
+    
+    if model is None: return jsonify({'error': 'Base model not loaded'}), 500
+    
+    try:
+        image_file = request.files.get('image')
+        if not image_file: return jsonify({'error': 'No image provided'}), 400
+            
+        transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
+        tensor, original_img, processed_img, did_crop = get_processed_tensor(image_file, transform_pipeline, device)
+        
+        idx, conf, _, _ = predict_6class(model, tensor, device)
+        if idx == -1: return jsonify({'error': 'Prediction failed'}), 400
+
+        explanation_base64 = generate_explanation(model, tensor, idx, 'integrated_gradients')
+        
+        return jsonify({
+            'success': True,
+            'method': 'integrated_gradients',
+            'crop_applied': did_crop,
+            'predicted_class': class_names[idx],
+            'explanation_image': explanation_base64,
+            'original_image': image_to_base64(original_img),
+            'processed_image': image_to_base64(processed_img) if did_crop else None
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@inference_bp.route('/inference/models/available', methods=['GET'])
+def get_available_models():
+    models_root = os.path.join(os.getcwd(), 'models', 'detection_models')
+    valid_ext = ('.pt', '.pth', '.onnx')
+    response = {"6class": []}
+    
+    try:
+        category_path = os.path.join(models_root, "6class")
+        if os.path.exists(category_path):
+            files = [f for f in os.listdir(category_path) if f.lower().endswith(valid_ext)]
+            files.sort()
+            for idx, filename in enumerate(files):
+                response["6class"].append({
+                    "id": idx,
+                    "filename": filename,
+                    "label": os.path.splitext(filename)[0].replace('_', ' ').capitalize()
+                })
+        return jsonify(response)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500

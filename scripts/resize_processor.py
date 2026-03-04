@@ -1,4 +1,5 @@
-import os
+# Script per trasformare le immagini ad una dimensione accettabile per il classificatore durante la fase di training
+
 from pathlib import Path
 from PIL import Image
 
@@ -25,7 +26,9 @@ def resize_smart(image_path, output_path):
         new_img.save(output_path, "JPEG", quality=95)
 
 def main():
-    base_path = Path("/home/giuseppe/Scrivania/Tirocinio/web_app")
+    script_dir = Path(__file__).resolve().parent
+
+    base_path = script_dir
     input_base = base_path / "processed_results"
     output_base = base_path / "resized_results"
     

@@ -6,7 +6,7 @@ from dotenv import dotenv_values
 import numpy as np
 
 config = dotenv_values(".env")
-DETECTION_MODEL_PATH = config.get("DETECTION_MODEL_PATH", "app/models/detection_models/fasterrcnn_orchid3.pth")
+DETECTION_MODEL_PATH = config.get("DETECTION_MODEL_PATH", "models/detection_models/fasterrcnn_orchid3.pth")
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def load_cropping_model():

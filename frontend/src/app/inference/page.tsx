@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, ChangeEvent } from "react";
+import { useState, ChangeEvent, useEffect } from "react";
 import Image from "next/image";
 import { ApiResponse } from "@/types";
 import DashboardSidebar from "@/components/DashBoardSidebar";
 import ResultsDisplay from "@/components/ResultDisplay";
 
-const API_URL = "http://localhost:5000/inference";
+const BASE_API_URL = "http://localhost:5000/inference";
 
 export default function OrchidDashboard() {
-  // --- STATE MANAGEMENT ---
+  // --- STATI PRINCIPALI ---
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -17,31 +17,37 @@ export default function OrchidDashboard() {
   const [apiError, setApiError] = useState<string | null>(null);
   const [resultCache, setResultCache] = useState<Record<string, ApiResponse>>({});
 
-  // Settings
+  // --- STATI MODELLI (Caricati dal Backend) ---
+  const [availableModels, setAvailableModels] = useState<{ "6class": any[] }>({ "6class": [] });
+
+  // --- STATI CONFIGURAZIONE ---
   const [modelStrategy, setModelStrategy] = useState("standard");
   const [cropMode, setCropMode] = useState("integrated");
   const [useGpu, setUseGpu] = useState(false);
   const [showOcclusion, setShowOcclusion] = useState(false);
   const [showIG, setShowIG] = useState(false);
+  const [selectedModel6Class, setSelectedModel6Class] = useState<string>("");
 
-  // TRACKING STATE: What generated the current result?
+  // --- STATI TRACKING ---
   const [analyzedMode, setAnalyzedMode] = useState<string | null>(null);
   const [analyzedStrategy, setAnalyzedStrategy] = useState<string | null>(null);
 
-  // --- HELPERS ---
-  const getCacheKey = (strat: string, crop: string, gpu: boolean, occ: boolean, ig: boolean) => {
-    return `${strat}-${crop}-${gpu}-${occ}-${ig}`;
-  };
+  // --- EFFETTO CARICAMENTO MODELLI ---
+  useEffect(() => {
+    fetch(`${BASE_API_URL}/models/available`)
+      .then((res) => res.json())
+      .then((data) => {
+        setAvailableModels(data);
+        if (data["6class"]?.length > 0) {
+          setSelectedModel6Class(data["6class"][0].filename);
+        }
+      })
+      .catch(() => setApiError("Impossibile caricare la lista dei modelli"));
+  }, []);
 
-  const checkCacheAndApply = (newStrat: string, newCrop: string, newGpu: boolean, newOcc: boolean, newIg: boolean) => {
-    const key = getCacheKey(newStrat, newCrop, newGpu, newOcc, newIg);
-    
-    if (resultCache[key]) {
-      setResult(resultCache[key]);
-      setAnalyzedMode(newCrop);
-      setAnalyzedStrategy(newStrat);
-    } 
-  };
+  // --- UTILS ---
+  const getCacheKey = (strat: string, crop: string, gpu: boolean, occ: boolean, ig: boolean, modelName: string) => 
+    `${strat}-${crop}-${gpu}-${occ}-${ig}-${modelName}`;
 
   // --- EVENT HANDLERS ---
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
@@ -57,37 +63,10 @@ export default function OrchidDashboard() {
     }
   };
 
-  const handleSetStrategy = (val: string) => {
-    setModelStrategy(val);
-    checkCacheAndApply(val, cropMode, useGpu, showOcclusion, showIG);
-  };
-
-  const handleSetCropMode = (val: string) => {
-    setCropMode(val);
-    checkCacheAndApply(modelStrategy, val, useGpu, showOcclusion, showIG);
-  };
-
-  const handleSetUseGpu = (val: boolean) => {
-    setUseGpu(val);
-    checkCacheAndApply(modelStrategy, cropMode, val, showOcclusion, showIG);
-  };
-
-  const handleSetOcc = (val: boolean) => {
-    setShowOcclusion(val);
-    checkCacheAndApply(modelStrategy, cropMode, useGpu, val, showIG);
-  };
-
-  const handleSetIG = (val: boolean) => {
-    setShowIG(val);
-    checkCacheAndApply(modelStrategy, cropMode, useGpu, showOcclusion, val);
-  };
-
-  // --- API CALL ---
   const handleAnalyze = async () => {
     if (!selectedFile) return;
     
-    const currentKey = getCacheKey(modelStrategy, cropMode, useGpu, showOcclusion, showIG);
-    
+    const currentKey = getCacheKey(modelStrategy, cropMode, useGpu, showOcclusion, showIG, selectedModel6Class);
     if (resultCache[currentKey]) {
       setResult(resultCache[currentKey]);
       setAnalyzedMode(cropMode);
@@ -98,61 +77,82 @@ export default function OrchidDashboard() {
     setLoading(true);
     setApiError(null);
 
-    let explainMethod = "none";
-    if (useGpu) {
-      if (showOcclusion && showIG) explainMethod = "both";
-      else if (showOcclusion) explainMethod = "occlusion";
-      else if (showIG) explainMethod = "integrated_gradients";
-    }
-
-    const formData = new FormData();
-    formData.append("image", selectedFile);
-    formData.append("model_strategy", modelStrategy);
-    formData.append("crop_mode", cropMode);
-    formData.append("explain_method", explainMethod);
-
     try {
-      const res = await fetch(API_URL, { method: "POST", body: formData });
-      if (!res.ok) throw new Error(`Server Error: ${res.statusText}`);
-      const data: ApiResponse = await res.json();
-      console.log("API Response:", data);
-      
-      setResult(data);
-      setAnalyzedMode(cropMode);
-      setAnalyzedStrategy(modelStrategy);
-
-      // Cache Logic
-      const newCache = { ...resultCache };
-      newCache[currentKey] = data;
+      const endpoint = modelStrategy === "standard" ? "6class" : "1vsall";
+      let finalData: ApiResponse;
 
       if (cropMode === "compare") {
-        const intKey = getCacheKey(modelStrategy, "integrated", useGpu, showOcclusion, showIG);
-        newCache[intKey] = data;
+        // --- COMPARE: CROP VS NO-CROP ---
+        const bodyOriginal = new FormData();
+        bodyOriginal.append("image", selectedFile);
+        bodyOriginal.append("use_crop", "false");
+        if (modelStrategy === "standard") bodyOriginal.append("model_name", selectedModel6Class);
 
-        const extKey = getCacheKey(modelStrategy, "external", useGpu, showOcclusion, showIG);
-        
-        // Creiamo un risultato che sembri un'analisi "External" pura
-        const syntheticExternal: ApiResponse = {
-          ...data,
-          // Sovrascriviamo i campi principali con quelli del crop
-          predicted_class: data.predicted_class_cropped || data.predicted_class,
-          confidence: data.confidence_cropped || data.confidence,
-          all_classes_probs: data.all_classes_probs_cropped || data.all_classes_probs,
-          integrated_gradients: data.integrated_gradients_cropped,
-          occlusion: data.occlusion_cropped,
-          // Importante: manteniamo il riferimento all'immagine croppata
-          image_cropped: data.image_cropped 
+        const bodyCropped = new FormData();
+        bodyCropped.append("image", selectedFile);
+        bodyCropped.append("use_crop", "true");
+        if (modelStrategy === "standard") bodyCropped.append("model_name", selectedModel6Class);
+
+        const [resOrig, resCrop] = await Promise.all([
+          fetch(`${BASE_API_URL}/${endpoint}`, { method: "POST", body: bodyOriginal }),
+          fetch(`${BASE_API_URL}/${endpoint}`, { method: "POST", body: bodyCropped })
+        ]);
+
+        if (!resOrig.ok || !resCrop.ok) throw new Error("Errore durante il confronto");
+
+        const dataOrig = await resOrig.json();
+        const dataCrop = await resCrop.json();
+
+        finalData = {
+          ...dataOrig,
+          predicted_class_cropped: dataCrop.predicted_class,
+          confidence_cropped: dataCrop.confidence,
+          all_classes_probs_cropped: dataCrop.all_classes_probs,
+          image_cropped: dataCrop.image_cropped,
         };
-        newCache[extKey] = syntheticExternal;
+      } else {
+        // --- ANALISI SINGOLA ---
+        const formData = new FormData();
+        formData.append("image", selectedFile);
+        formData.append("use_crop", cropMode === "external" ? "true" : "false");
+        if (modelStrategy === "standard") formData.append("model_name", selectedModel6Class);
+
+        const res = await fetch(`${BASE_API_URL}/${endpoint}`, { method: "POST", body: formData });
+        if (!res.ok) throw new Error(`Errore Server: ${res.statusText}`);
+        finalData = await res.json();
       }
 
-      setResultCache(newCache);
+      // --- EXPLAINABILITY ---
+      if (useGpu && (showOcclusion || showIG)) {
+        const explainFormData = new FormData();
+        explainFormData.append("image", selectedFile);
+        explainFormData.append("use_crop", cropMode === "external" ? "true" : "false");
+        // Le spiegazioni correntemente usano il modello 6-classi
+        explainFormData.append("model_name", selectedModel6Class);
 
-    } catch (err: unknown) {
-      console.error(err);
-      // Narrowing the error type to safely access the message
-      const errorMessage = err instanceof Error ? err.message : "Failed to connect to backend";
-      setApiError(errorMessage);
+        if (showOcclusion) {
+          const resOcc = await fetch(`${BASE_API_URL}/generate_occlusion`, { method: "POST", body: explainFormData });
+          if (resOcc.ok) {
+            const dataOcc = await resOcc.json();
+            finalData.occlusion = dataOcc.explanation_image;
+          }
+        }
+        if (showIG) {
+          const resIG = await fetch(`${BASE_API_URL}/generate_explain`, { method: "POST", body: explainFormData });
+          if (resIG.ok) {
+            const dataIG = await resIG.json();
+            finalData.integrated_gradients = dataIG.explanation_image;
+          }
+        }
+      }
+
+      setResult(finalData);
+      setAnalyzedMode(cropMode);
+      setAnalyzedStrategy(modelStrategy);
+      setResultCache(prev => ({ ...prev, [currentKey]: finalData }));
+
+    } catch (err: any) {
+      setApiError(err.message || "Errore sconosciuto");
     } finally {
       setLoading(false);
     }
@@ -161,13 +161,15 @@ export default function OrchidDashboard() {
   return (
     <div className="h-screen bg-[#F6F4EF] text-[#2A2F2C] flex flex-col md:flex-row font-sans overflow-hidden">
       <DashboardSidebar
-        config={{ modelStrategy, cropMode, useGpu, showOcclusion, showIG }}
+        config={{ modelStrategy, cropMode, useGpu, showOcclusion, showIG, selectedModel6Class }}
+        availableModels={availableModels}
         setConfig={{ 
-          setModelStrategy: handleSetStrategy, 
-          setCropMode: handleSetCropMode, 
-          setUseGpu: handleSetUseGpu, 
-          setShowOcclusion: handleSetOcc, 
-          setShowIG: handleSetIG 
+          setModelStrategy, 
+          setCropMode, 
+          setUseGpu, 
+          setShowOcclusion, 
+          setShowIG, 
+          setSelectedModel6Class 
         }}
         fileState={{ selectedFile, handleFileChange }}
         actionState={{ loading, handleAnalyze, apiError }}
@@ -178,16 +180,17 @@ export default function OrchidDashboard() {
           <h1 className="text-3xl md:text-4xl font-extrabold text-emerald-900 mb-2 flex items-center gap-3">
             <span className="text-pink-600">🌸</span> Inference for orchids
           </h1>
-          <p className="text-stone-500 font-medium">Start By Choosing an Image</p>
+          <p className="text-stone-500 font-medium italic">Seleziona un modello e analizza la specie</p>
         </header>
 
+        {/* ... Codice Preview ... */}
         {preview && !result && (
-          <div className="max-w-4xl mx-auto border-2 border-dashed border-stone-300 rounded-2xl p-8 flex flex-col items-center justify-center bg-stone-50/50 text-center">
-            <div className="relative w-full h-[500px] mb-4 p-2 bg-white rounded-xl shadow-sm border border-stone-100">
-              <Image src={preview} alt="Upload" fill className="object-contain rounded-lg" unoptimized />
-            </div>
-            <p className="text-sm font-semibold text-stone-600 animate-pulse">Ready to analyze...</p>
-          </div>
+           <div className="max-w-4xl mx-auto border-2 border-dashed border-stone-300 rounded-2xl p-8 flex flex-col items-center justify-center bg-stone-50/50">
+             <div className="relative w-full h-[500px] mb-4 p-2 bg-white rounded-xl shadow-sm border border-stone-100">
+               <Image src={preview} alt="Upload" fill className="object-contain rounded-lg" unoptimized />
+             </div>
+             {loading && <p className="animate-pulse text-emerald-700 font-bold text-lg">⚙️ Analisi in corso...</p>}
+           </div>
         )}
 
         {result && preview && (

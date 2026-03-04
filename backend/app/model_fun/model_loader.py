@@ -1,9 +1,8 @@
-# app/model_loader.py
 
 import os
 import torch
 from dotenv import dotenv_values
-from typing import List, Any, Dict
+from typing import Any, Dict
 
 try:
     from app.model_fun.inference import loadModel, loadDevice
@@ -14,48 +13,44 @@ except ImportError as e:
 config = dotenv_values(".env")
 
 GPU_AVAILABLE = torch.cuda.is_available() and config.get("GPU", "False").lower() in ('true', '1', 't')
-SIXCLASS_MODEL_PATH = config.get("SIXCLASS_MODEL_PATH", "app/models/detection_models/5Class/model.pt")
-ONEVSALL_MODEL_DIR = config.get("1VSALL_MODEL_DIR", "app/models/detection_models/1vall")
+# Puntiamo alla cartella dei modelli, non al singolo file
+SIXCLASS_MODELS_DIR = config.get("SIXCLASS_MODELS_DIR", "models/detection_models/6class")
+ONEVSALL_MODEL_DIR = config.get("ONEVSALL_MODEL_DIR", "models/detection_models/1vsall")
 CLASS_NAMES = ['O. exaltata', 'O. garganica', 'O. incubacea', 'O. majellensis', 'O. sphegodes', 'O. sphegodes_Palena']
-
-
-# --- FUNZIONE DI CARICAMENTO MODELLI ---
 
 def load_resources() -> Dict[str, Any]:
     """
-    Carica il device, il modello 5-Class e i modelli 1-vs-All.
-
-    Ritorna un dizionario contenente:
-    - 'device': il device di PyTorch
-    - 'model': il modello 5-Class
-    - 'onevall_models': una lista dei modelli 1-vs-All
+    Carica il device, un dizionario di modelli 6-Class e i modelli 1-vs-All.
     """
-    
-    # Inizializza il device (dipende dalla configurazione)
     device = loadDevice(forceCpu=not GPU_AVAILABLE)
     
-    model = None
+    # Ora usiamo un dizionario per gestire più modelli 6-class
+    six_class_models = {}
     onevall_models = []
     
     print(f"--- SERVER STARTUP: Loading models... ---", flush=True)
 
-    # 1. Load 5-Class Model
+    # 1. Load ALL 6-Class Models from directory
     try:
-        current_model_path = SIXCLASS_MODEL_PATH
-        if not os.path.exists(current_model_path):
-            fallback = "app/models/model.pt"
-            if os.path.exists(fallback):
-                print(f"Warning: Configured path not found. Using fallback: {fallback}", flush=True)
-                current_model_path = fallback
-            else:
-                raise FileNotFoundError(f"Main model not found at {SIXCLASS_MODEL_PATH}")
+        if not os.path.exists(SIXCLASS_MODELS_DIR):
+            raise FileNotFoundError(f"6-Class models directory not found at {SIXCLASS_MODELS_DIR}")
         
-        model = loadModel(current_model_path, len(CLASS_NAMES), device)
-        print("Success: six Class Model loaded.", flush=True)
+        # Estensioni supportate
+        valid_ext = ('.pt', '.pth')
+        model_files = [f for f in os.listdir(SIXCLASS_MODELS_DIR) if f.lower().endswith(valid_ext)]
+
+        if not model_files:
+            print("Warning: No model files found in 6class directory.", flush=True)
+
+        for model_file in model_files:
+            path = os.path.join(SIXCLASS_MODELS_DIR, model_file)
+            # Carichiamo ogni modello e lo associamo al suo nome file
+            six_class_models[model_file] = loadModel(path, len(CLASS_NAMES), device)
+            print(f"Success: 6-Class Model '{model_file}' loaded.", flush=True)
+            
     except Exception as e:
-        print(f"CRITICAL ERROR: Failed to load 5-Class Model. {e}", flush=True)
-        # In un modulo di utilità, è meglio sollevare l'errore per fermare l'avvio del server
-        raise RuntimeError(f"Failed to load 5-Class Model: {e}")
+        print(f"CRITICAL ERROR: Failed to load 6-Class Models. {e}", flush=True)
+        raise RuntimeError(f"Failed to load 6-Class Models: {e}")
 
     # 2. Load 1-vs-All Models
     try:
@@ -66,9 +61,9 @@ def load_resources() -> Dict[str, Any]:
             for class_name in CLASS_NAMES:
                 model_file = os.path.join(ONEVSALL_MODEL_DIR, class_name, 'model.pt')
                 if not os.path.exists(model_file):
+                    # Fallback opzionale o errore se manca un pezzo dell'ensemble
                     raise FileNotFoundError(f"Missing 1-vs-All model for: {class_name}")
                 
-                # Load binary model (output size 2)
                 ovr_model = loadModel(model_file, 2, device)
                 loaded_ovr.append(ovr_model)
             
@@ -76,12 +71,11 @@ def load_resources() -> Dict[str, Any]:
             print("Success: 1-vs-All Models loaded.", flush=True)
     except Exception as e:
         print(f"Error: Failed to load 1-vs-All models. {e}", flush=True)
-        # Anche qui, solleviamo l'errore per un avvio pulito
         raise RuntimeError(f"Failed to load 1-vs-All models: {e}")
 
-    # 3. Ritorna i modelli caricati e il device
     return {
         "device": device,
-        "model": model,
-        "onevall_models": onevall_models
+        "models_6class": six_class_models, # Restituisce il dizionario
+        "onevall_models": onevall_models,
+        "class_names": CLASS_NAMES
     }

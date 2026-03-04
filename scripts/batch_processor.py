@@ -1,8 +1,7 @@
 import os
 import requests
-import json
 import time
-from PIL import Image, ImageOps
+from PIL import Image
 
 # --- CONFIGURATION ---
 API_URL = "http://127.0.0.1:5000/dbinference" 
@@ -16,31 +15,6 @@ TARGET_V = (256, 512) # Vertical
 TARGET_H = (512, 256) # Horizontal
 
 processing_summary = []
-
-def resize_with_dynamic_padding(img, size_v, size_h):
-
-    ###########
-    return img
-    ###########
-    w, h = img.size
-    original_aspect = w / h
-    
-    ratio_v = size_v[0] / size_v[1]
-    ratio_h = size_h[0] / size_h[1]
-    
-    if abs(original_aspect - ratio_v) < abs(original_aspect - ratio_h):
-        target_size = size_v
-    else:
-        target_size = size_h
-
-    img.thumbnail(target_size, Image.Resampling.LANCZOS)
-    
-    new_img = Image.new("RGB", target_size, (0, 0, 0))
-    paste_x = (target_size[0] - img.size[0]) // 2
-    paste_y = (target_size[1] - img.size[1]) // 2
-    new_img.paste(img, (paste_x, paste_y))
-    
-    return new_img
 
 def center_on_bbox(img: Image.Image, bbox: list, output_size=None):
     """
@@ -147,7 +121,8 @@ def process_folder(folder_path, folder_name):
                             centered_crop = center_on_bbox(img, box)
 
                             # 2️⃣ Applichiamo il ridimensionamento con padding dinamico
-                            final_crop = resize_with_dynamic_padding(centered_crop, TARGET_V, TARGET_H)
+                            #final_crop = resize_with_dynamic_padding(centered_crop, TARGET_V, TARGET_H)
+                            final_crop = centered_crop
 
                             base_name = os.path.splitext(img_name)[0]
 
@@ -219,3 +194,29 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def resize_with_dynamic_padding(img, size_v, size_h):
+
+    ###########
+    return img
+    ###########
+    w, h = img.size
+    original_aspect = w / h
+    
+    ratio_v = size_v[0] / size_v[1]
+    ratio_h = size_h[0] / size_h[1]
+    
+    if abs(original_aspect - ratio_v) < abs(original_aspect - ratio_h):
+        target_size = size_v
+    else:
+        target_size = size_h
+
+    img.thumbnail(target_size, Image.Resampling.LANCZOS)
+    
+    new_img = Image.new("RGB", target_size, (0, 0, 0))
+    paste_x = (target_size[0] - img.size[0]) // 2
+    paste_y = (target_size[1] - img.size[1]) // 2
+    new_img.paste(img, (paste_x, paste_y))
+    
+    return new_img

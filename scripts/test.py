@@ -1,205 +1,130 @@
-#!/usr/bin/env python3
-import sys
 import os
-from datetime import datetime
-
-# Add project root to path
-script_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.join(script_dir, '..')
-sys.path.insert(0, os.path.abspath(project_root))
-
-import torch
-import glob
+import requests
 import numpy as np
-from collections import defaultdict
-from backend.app.model_fun.test_model import deviceLoader, modelLoader
-from torch.utils.data import DataLoader
-from backend.app.model_fun.train_model import ChunkDataset
-from sklearn.metrics import f1_score, confusion_matrix, classification_report
 import matplotlib.pyplot as plt
-import seaborn as sns
+from datetime import datetime
+from sklearn.metrics import f1_score, confusion_matrix
 
+# --- CONFIGURAZIONE ---
+BASE_URL = "http://localhost:5000/inference"
+MODELS_LIST_URL = "http://localhost:5000/inference/models/available"
+# Cartella locale che contiene le immagini reali da testare
+# Assicurarsi che i nomi delle sottocartelle corrispondano alle classi
+TEST_IMAGES_DIR = "../datasets/test/images_raw" 
 CLASS_NAMES = ['O. exaltata', 'O. garganica', 'O. incubacea', 'O. majellensis', 'O. sphegodes', 'O. sphegodes_Palena']
-CLASS_SIZE = len(CLASS_NAMES)
+RESULTS_DIR = f"api_test_results_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
-# Find all chunk files in the directory
-base_dir = '../datasets/test/cropped_original'
-abs_base_dir = os.path.abspath(base_dir)
+os.makedirs(RESULTS_DIR, exist_ok=True)
 
-print(f"Looking for all chunk files in: {abs_base_dir}")
-all_chunks = glob.glob(os.path.join(abs_base_dir, "*.pt"))
-print(f"Found {len(all_chunks)} chunk files:")
-for chunk in all_chunks:
-    print(f"  - {os.path.basename(chunk)}")
+def get_available_models():
+    """Recupera la lista dei modelli 6class dal backend"""
+    try:
+        res = requests.get(MODELS_LIST_URL)
+        res.raise_for_status()
+        return [m['filename'] for m in res.json().get('6class', [])]
+    except Exception as e:
+        print(f"Errore nel recupero dei modelli: {e}")
+        return []
 
-# Use the first chunk's base path
-if all_chunks:
-    first_chunk = all_chunks[0]
-    base_path = first_chunk.replace('_chunk_0.pt', '').replace(abs_base_dir, base_dir)
-    # Extract just the filename for reporting
-    pt_filename = os.path.basename(first_chunk)
-    print(f"\nUsing base path: {base_path}")
-    print(f"PT file: {pt_filename}")
-else:
-    raise FileNotFoundError("No chunk files found!")
-
-MODEL_PATH = '../backend/app/models/detection_models/global/model.pt'
-
-if __name__ == '__main__':
-    device = deviceLoader()
-    model = modelLoader(MODEL_PATH, CLASS_SIZE, device)
-
-    print("\nCaricamento dataset test...")
-    testDataset = ChunkDataset(base_path, chunk_size=3000)
-    print(f"Test dataset: {len(testDataset)} immagini")
-
-    testDataLoader = DataLoader(
-        testDataset, 
-        batch_size=10, 
-        shuffle=False,
-        num_workers=0,
-        pin_memory=False
-    )
-
-    # Evaluation with F-Score and confusion matrix
-    print("\nRunning evaluation...")
-    model.eval()
+def run_api_benchmark(model_name, image_paths, labels):
+    """Esegue il benchmark di un singolo modello tramite chiamate API"""
+    print(f"\n>>> Benchmarking Model: {model_name}")
     
-    all_predictions = []
-    all_labels = []
-    all_correct = 0
-    all_total = 0
+    y_true = []
+    y_pred = []
+    confidences = []
+
+    for img_path, true_label_idx in zip(image_paths, labels):
+        try:
+            with open(img_path, 'rb') as f:
+                files = {'image': f}
+                data = {
+                    'model_name': model_name,
+                    'use_crop': 'true' # Usiamo il crop per testare la precisione sull'orchidea
+                }
+                
+                response = requests.post(f"{BASE_URL}/6class", files=files, data=data)
+                response.raise_for_status()
+                res_json = response.json()
+
+                if res_json['success']:
+                    pred_class = res_json['predicted_class']
+                    # Convertiamo il nome della classe nell'indice corrispondente
+                    pred_idx = CLASS_NAMES.index(pred_class) if pred_class in CLASS_NAMES else -1
+                    
+                    y_true.append(true_label_idx)
+                    y_pred.append(pred_idx)
+                    confidences.append(res_json['confidence'])
+        except Exception as e:
+            print(f"Errore processando {os.path.basename(img_path)}: {e}")
+
+    # Calcolo metriche
+    y_true = np.array(y_true)
+    y_pred = np.array(y_pred)
     
-    # Per-class statistics
-    class_correct = defaultdict(int)
-    class_total = defaultdict(int)
-    
-    with torch.no_grad():
-        for batch_idx, (images, labels, filenames) in enumerate(testDataLoader):
-            images = images.to(device)
-            labels = labels.to(device)
-            
-            outputs = model(images)
-            _, predicted = torch.max(outputs, 1)
-            
-            # Store for metrics
-            all_predictions.extend(predicted.cpu().numpy())
-            all_labels.extend(labels.cpu().numpy())
-            
-            # Accuracy
-            all_total += labels.size(0)
-            batch_correct = (predicted == labels).sum().item()
-            all_correct += batch_correct
-            
-            # Per-class accuracy
-            for i in range(len(labels)):
-                label = labels[i].item()
-                pred = predicted[i].item()
-                class_total[label] += 1
-                if label == pred:
-                    class_correct[label] += 1
-            
-            if batch_idx % 10 == 0:
-                print(f"  Batch {batch_idx}: {all_correct}/{all_total} correct ({100*all_correct/all_total:.1f}%)")
-    
-    # Convert to numpy arrays
-    y_true = np.array(all_labels)
-    y_pred = np.array(all_predictions)
-    
-    # Calculate metrics
-    # Overall Accuracy
-    accuracy = all_correct / all_total
-    
-    # F-Score
-    f1_macro = f1_score(y_true, y_pred, average='macro', zero_division=0)
-    f1_weighted = f1_score(y_true, y_pred, average='weighted', zero_division=0)
-    f1_per_class = f1_score(y_true, y_pred, average=None, zero_division=0)
-    
-    # Confusion Matrix
+    acc = np.mean(y_true == y_pred)
+    f1 = f1_score(y_true, y_pred, average='macro', zero_division=0)
     cm = confusion_matrix(y_true, y_pred, labels=list(range(len(CLASS_NAMES))))
     
-    # Build report string
-    report_lines = []
-    report_lines.append("="*70)
-    report_lines.append(" TEST REPORT")
-    report_lines.append("="*70)
-    report_lines.append(f" Date: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    report_lines.append(f" Dataset file: {pt_filename}")
-    report_lines.append(f" Total images: {len(testDataset)}")
-    report_lines.append("="*70)
-    report_lines.append("")
-    report_lines.append(" RISULTATI")
-    report_lines.append("="*70)
-    report_lines.append("")
-    report_lines.append(f"Accuracy: {accuracy:.4f} ({all_correct}/{all_total})")
-    report_lines.append("")
-    report_lines.append("F-Score:")
-    report_lines.append(f"  Macro F1:     {f1_macro:.4f}")
-    report_lines.append(f"  Weighted F1:  {f1_weighted:.4f}")
-    report_lines.append("")
-    report_lines.append("  Per-class F1:")
-    for i, class_name in enumerate(CLASS_NAMES):
-        if i < len(f1_per_class):
-            report_lines.append(f"    {class_name:<20}: {f1_per_class[i]:.4f}")
+    return {
+        "name": model_name,
+        "accuracy": acc,
+        "f1_macro": f1,
+        "cm": cm,
+        "avg_conf": np.mean(confidences) if confidences else 0
+    }
+
+if __name__ == '__main__':
+    # 1. Ottieni modelli
+    models = get_available_models()
+    if not models:
+        print("Nessun modello trovato. Esco.")
+        exit()
+
+    # 2. Prepara dataset di test (Immagini locali)
+    # Assumiamo una struttura: TEST_IMAGES_DIR/nome_classe/immagine.jpg
+    image_paths = []
+    labels = []
+    for idx, class_name in enumerate(CLASS_NAMES):
+        class_dir = os.path.join(TEST_IMAGES_DIR, class_name)
+        if os.path.exists(class_dir):
+            imgs = [os.path.join(class_dir, f) for f in os.listdir(class_dir) if f.lower().endswith(('.jpg', '.png', '.jpeg'))]
+            image_paths.extend(imgs)
+            labels.extend([idx] * len(imgs))
+
+    if not image_paths:
+        print(f"Nessuna immagine trovata in {TEST_IMAGES_DIR}. Controlla la struttura delle cartelle.")
+        exit()
+
+    print(f"Inizio benchmark su {len(image_paths)} immagini con {len(models)} modelli.")
+
+    results = []
+    for model in models:
+        res = run_api_benchmark(model, image_paths, labels)
+        results.append(res)
+
+    # 3. Report e Grafici
+    results.sort(key=lambda x: x['accuracy'], reverse=True)
     
-    report_lines.append("")
-    report_lines.append("Per-class Accuracy:")
-    for i, class_name in enumerate(CLASS_NAMES):
-        if class_total[i] > 0:
-            acc = class_correct[i] / class_total[i]
-            report_lines.append(f"  {class_name:<20}: {acc:.4f} ({class_correct[i]}/{class_total[i]})")
-        else:
-            report_lines.append(f"  {class_name:<20}: N/A (no samples)")
+    # Salvataggio Report Testuale
+    with open(os.path.join(RESULTS_DIR, "api_comparison_report.txt"), "w") as f:
+        f.write(f"API BENCHMARK REPORT - {datetime.now()}\n")
+        f.write("-" * 60 + "\n")
+        f.write(f"{'MODEL':<25} | {'ACC':<10} | {'F1':<10} | {'CONF':<10}\n")
+        f.write("-" * 60 + "\n")
+        for r in results:
+            f.write(f"{r['name']:<25} | {r['accuracy']:<10.4f} | {r['f1_macro']:<10.4f} | {r['avg_conf']:<10.2f}\n")
+
+    # Matrici di Confusione e Grafico Finale
+    names = [r['name'] for r in results]
+    accs = [r['accuracy'] for r in results]
     
-    report_lines.append("")
-    report_lines.append("Confusion Matrix:")
-    report_lines.append("")
-    
-    # Header row
-    header = f"{'True\\Pred':<15}"
-    for name in CLASS_NAMES:
-        header += f"{name[:8]:>8}"
-    report_lines.append(header)
-    report_lines.append("-" * 70)
-    
-    # Matrix rows
-    for i, true_name in enumerate(CLASS_NAMES):
-        row = f"{true_name:<15}"
-        for j in range(len(CLASS_NAMES)):
-            row += f"{cm[i,j]:>8}"
-        report_lines.append(row)
-    
-    report_lines.append("")
-    report_lines.append("="*70)
-    report_lines.append(" CLASSIFICATION REPORT")
-    report_lines.append("="*70)
-    report_lines.append(classification_report(y_true, y_pred, target_names=CLASS_NAMES, zero_division=0))
-    
-    # Join all lines
-    full_report = "\n".join(report_lines)
-    
-    # Print to console
-    print("\n" + full_report)
-    
-    # Save to file with date
-    date_str = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    report_filename = f"report_{date_str}.txt"
-    
-    with open(report_filename, 'w') as f:
-        f.write(full_report)
-    
-    print(f"\nReport saved to: {report_filename}")
-    
-    # Plot and save confusion matrix
-    plt.figure(figsize=(10, 8))
-    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', 
-                xticklabels=[c[:10] for c in CLASS_NAMES],
-                yticklabels=[c[:10] for c in CLASS_NAMES])
-    plt.title(f'Confusion Matrix\nDataset: {pt_filename}', fontsize=12, fontweight='bold')
-    plt.xlabel('Predicted', fontsize=12)
-    plt.ylabel('True', fontsize=12)
+    plt.figure(figsize=(10, 6))
+    plt.barh(names, accs, color='teal')
+    plt.xlabel('Accuracy')
+    plt.title('Confronto Accuratezza Modelli (via API)')
+    plt.grid(axis='x', linestyle='--', alpha=0.6)
     plt.tight_layout()
-    
-    cm_filename = f"confusion_matrix_{date_str}.png"
-    plt.savefig(cm_filename, dpi=300, bbox_inches='tight')
-    print(f"Confusion matrix saved to: {cm_filename}")
+    plt.savefig(os.path.join(RESULTS_DIR, "accuracy_comparison.png"))
+
+    print(f"\nBenchmark completato. Risultati salvati in: {RESULTS_DIR}")

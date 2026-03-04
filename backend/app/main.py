@@ -1,7 +1,7 @@
 from flask import Flask
 from flask_cors import CORS
 from app.api.inference import inference_bp
-from app.fun.model_loader import load_resources # Resource loading function
+from app.model_fun.model_loader import load_resources # Resource loading function
 from app.api.db_inference import db_inference_bp
 from app.api.save_db import save_bp
 from app.api.new_db_inference import new_db_inference_bp

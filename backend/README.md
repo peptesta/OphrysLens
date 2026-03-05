@@ -33,8 +33,8 @@ docker-compose up --build backend
 O se si vuole avviare solo il backend (dalla directory del backend):
 
 ```bash
-docker build -t backend .
-docker run -p 5000:5000 backend
+docker build -t ophryslens-backend .
+docker run -p 5000:5000 ophryslens-backend
 ```
 
 | Metodo | Endpoint                        | Descrizione                             | Parametri Principali              |

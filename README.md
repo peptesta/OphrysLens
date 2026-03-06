@@ -12,7 +12,7 @@ Il progetto è basato su un'architettura a microservizi orchestrata tramite Dock
 ### Backend (Python/Flask)
 - Gestione dell'inferenza tramite modelli PyTorch  
 - Rilevamento e isolamento dei fiori mediante Faster R-CNN  
-- Generazione di mappe di calore:
+- Generazione di heatmaps e metodi di explainability basate sulle seguenti tecniche:
   - Occlusion Sensitivity
   - Integrated Gradients  
 

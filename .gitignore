@@ -16,6 +16,9 @@ venv/
 # Docker
 *.log
 
+# Da rimuovere
+*.csv
+
 # OS
 .DS_Store
 

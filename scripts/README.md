@@ -117,14 +117,14 @@ python resize_processor.py
 
 ---
 
-### test.py
+### inference_test.py
 
 Script di test per testare e comparare le performance dei modelli.
 
 Esempio:
 
 ```bash
-python test.py
+python inference_test.py
 ```
 
 ---

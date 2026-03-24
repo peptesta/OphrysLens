@@ -5,7 +5,7 @@ from dotenv import dotenv_values
 from typing import Any, Dict
 
 try:
-    from app.model_fun.inference import loadModel, loadDevice
+    from app.model_fun.inference_handler import loadModel, loadDevice
 except ImportError as e:
     print(f"Error importing model_fun dependencies: {e}")
     raise

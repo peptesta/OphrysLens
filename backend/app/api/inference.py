@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from app import model_state                                 
 from app.model_fun.preprocess_data import getTransforms     
 from app.model_fun.inference_handler import predict_6class, predict_1vsall
-from app.model_fun.explainability_fun import (
+from app.model_fun.explainability import (
     generate_explanation,                                              
     image_to_base64                                                               
 )
@@ -167,68 +167,56 @@ def run_6class_batch_inference():
     # Restituiamo il batch di risultati
     return jsonify({'results': results})
     
-@inference_bp.route('/inference/generate_occlusion', methods=['POST'])
-def run_occlusion_endpoint():
+@inference_bp.route('/inference/generate_explainability', methods=['POST'])
+def run_explainability_endpoint():
     selected_model_name = request.form.get('model_name')
     model, device = model_state.get_6class_model_by_name(selected_model_name)
     _, _, class_names = model_state.get_1vsall_resources()
     
-    if model is None: return jsonify({'error': 'Base model not loaded'}), 500
+    if model is None: 
+        return jsonify({'error': 'Base model not loaded'}), 500
     
     try:
         image_file = request.files.get('image')
-        if not image_file: return jsonify({'error': 'No image provided'}), 400
+        if not image_file: 
+            return jsonify({'error': 'No image provided'}), 400
             
+        # Preprocessing
         transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
         tensor, original_img, processed_img, did_crop = get_processed_tensor(image_file, transform_pipeline, device)
         
+        # Inferenza per determinare il target dell'explainability
         idx, conf, _, _ = predict_6class(model, tensor, device)
-        if idx == -1: return jsonify({'error': 'Prediction failed'}), 400
+        if idx == -1: 
+            return jsonify({'error': 'Prediction failed'}), 400
 
-        explanation_base64 = generate_explanation(model, tensor, idx, 'occlusion')
+        # Parametri opzionali per l'occlusione
+        sw_size = int(request.form.get('window_size', 15))
+        stride = int(request.form.get('stride', 8))
+
+        # Generazione immagine combinata (Occlusion + IG)
+        explanation_base64 = generate_explanation(
+            model, 
+            tensor, 
+            idx, 
+            class_names,
+            sw_size,
+            stride
+        )
         
         return jsonify({
             'success': True,
-            'method': 'occlusion',
-            'crop_applied': did_crop,
+            'methods': ['occlusion', 'integrated_gradients'],
             'predicted_class': class_names[idx],
-            'explanation_image': explanation_base64,
+            'confidence': float(conf),
+            'explanation_image': explanation_base64, # Immagine affiancata
             'original_image': image_to_base64(original_img),
-            'processed_image': image_to_base64(processed_img) if did_crop else None
+            'crop_applied': did_crop
         })
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@inference_bp.route('/inference/generate_explain', methods=['POST'])
-def run_explain_endpoint():
-    selected_model_name = request.form.get('model_name')
-    model, device = model_state.get_6class_model_by_name(selected_model_name)
-    _, _, class_names = model_state.get_1vsall_resources()
-    
-    if model is None: return jsonify({'error': 'Base model not loaded'}), 500
-    
-    try:
-        image_file = request.files.get('image')
-        if not image_file: return jsonify({'error': 'No image provided'}), 400
-            
-        transform_pipeline = getTransforms(WIDTH, HEIGHT, True, MEAN, STD)
-        tensor, original_img, processed_img, did_crop = get_processed_tensor(image_file, transform_pipeline, device)
         
-        idx, conf, _, _ = predict_6class(model, tensor, device)
-        if idx == -1: return jsonify({'error': 'Prediction failed'}), 400
-
-        explanation_base64 = generate_explanation(model, tensor, idx, 'integrated_gradients')
-        
-        return jsonify({
-            'success': True,
-            'method': 'integrated_gradients',
-            'crop_applied': did_crop,
-            'predicted_class': class_names[idx],
-            'explanation_image': explanation_base64,
-            'original_image': image_to_base64(original_img),
-            'processed_image': image_to_base64(processed_img) if did_crop else None
-        })
     except Exception as e:
+        import traceback
+        print(traceback.format_exc()) # Log utile per il debug lato server
         return jsonify({'error': str(e)}), 500
 
 @inference_bp.route('/inference/models/available', methods=['GET'])

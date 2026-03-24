@@ -14,43 +14,32 @@ interface CompareViewProps {
   strategyName: string;
 }
 
-// --- SOTTO-COMPONENTE PER LE MINIATURE XAI ---
-function XaiDisplay({ 
-  ig, 
-  occ, 
+function XaiCombinedDisplay({ 
+  combinedSrc, 
   title, 
   onImageClick 
 }: { 
-  ig?: string | null, 
-  occ?: string | null, 
+  combinedSrc?: string | null, 
   title: string, 
   onImageClick: (src: string, label: string) => void 
 }) {
-  if (!ig && !occ) return null;
+  if (!combinedSrc) return null;
   return (
     <div className="mt-6 pt-6 border-t border-stone-100">
       <h4 className="text-[10px] font-bold text-emerald-800 uppercase mb-4 tracking-widest flex items-center gap-2">
-        🧠 {title} Explanations
+        🧠 {title} Analysis (Occlusion & IG)
       </h4>
-      <div className="grid grid-cols-2 gap-3">
-        {ig && (
-          <div 
-            onClick={() => onImageClick(`data:image/jpeg;base64,${ig}`, `${title} - Integrated Gradients`)}
-            className="relative h-40 bg-white rounded-lg border border-stone-200 overflow-hidden group cursor-zoom-in hover:border-emerald-500 transition-all shadow-sm"
-          >
-            <span className="absolute top-1 left-1 z-10 bg-black/60 text-[8px] text-white px-1.5 py-0.5 rounded font-bold uppercase backdrop-blur-sm">IG</span>
-            <Image src={`data:image/jpeg;base64,${ig}`} alt="IG" fill className="object-contain p-1" unoptimized />
-          </div>
-        )}
-        {occ && (
-          <div 
-            onClick={() => onImageClick(`data:image/jpeg;base64,${occ}`, `${title} - Occlusion Map`)}
-            className="relative h-40 bg-white rounded-lg border border-stone-200 overflow-hidden group cursor-zoom-in hover:border-emerald-500 transition-all shadow-sm"
-          >
-            <span className="absolute top-1 left-1 z-10 bg-black/60 text-[8px] text-white px-1.5 py-0.5 rounded font-bold uppercase backdrop-blur-sm">Occ</span>
-            <Image src={`data:image/jpeg;base64,${occ}`} alt="Occ" fill className="object-contain p-1" unoptimized />
-          </div>
-        )}
+      <div 
+        onClick={() => onImageClick(`data:image/png;base64,${combinedSrc}`, `${title} - Visual Explanation`)}
+        className="relative h-64 bg-white rounded-lg border border-stone-200 overflow-hidden group cursor-zoom-in hover:border-emerald-500 transition-all shadow-sm"
+      >
+        <Image 
+          src={`data:image/png;base64,${combinedSrc}`} 
+          alt="Combined XAI" 
+          fill 
+          className="object-contain p-1" 
+          unoptimized 
+        />
       </div>
     </div>
   );
@@ -85,7 +74,8 @@ export default function CompareView({ result, preview, analyzedMode, strategyNam
     confidence: result.confidence,
     probs: result.all_classes_probs,
     ig: result.integrated_gradients,
-    occ: result.occlusion
+    occ: result.occlusion,
+    combined: result.explanation_combined
   };
 
   const rightData = {
@@ -114,7 +104,8 @@ export default function CompareView({ result, preview, analyzedMode, strategyNam
         ? result.occlusion
         : result.occlusion_cropped,
 
-    crop: result.image_cropped
+    crop: result.image_cropped,
+    combined: result.explanation_combined_cropped
   };
 
   const handleImageClick = (src: string, label: string) => {
@@ -173,8 +164,12 @@ export default function CompareView({ result, preview, analyzedMode, strategyNam
               >
                  <Image src={preview} alt="Original" fill className="object-contain group-hover:scale-[1.02] transition-transform duration-500" unoptimized />
               </div>
-              <XaiDisplay ig={leftData.ig} occ={leftData.occ} title="Original" onImageClick={handleImageClick} />
-            </>
+              <XaiCombinedDisplay 
+                combinedSrc={leftData.combined} 
+                title="Original" 
+                onImageClick={handleImageClick} 
+              /> 
+           </>
           ) : (
             <EmptyStateCard title="Integrated Results Pending" />
           )}
@@ -199,8 +194,11 @@ export default function CompareView({ result, preview, analyzedMode, strategyNam
                       <div className="h-full flex items-center justify-center text-stone-400 italic">No Crop Available</div>
                    )}
                 </div>
-                <XaiDisplay ig={rightData.ig} occ={rightData.occ} title="Cropped" onImageClick={handleImageClick} />
-              </>
+                <XaiCombinedDisplay 
+                  combinedSrc={rightData.combined} 
+                  title="Original" 
+                  onImageClick={handleImageClick} 
+                />              </>
             ) : (
               <div className="h-full flex flex-col items-center justify-center p-8 bg-amber-50 rounded-xl border border-amber-100 min-h-[400px]">
                 <span className="text-4xl mb-2">⚠️</span>

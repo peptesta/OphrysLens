@@ -134,34 +134,39 @@ export default function OrchidDashboard() {
       // --- EXPLAINABILITY ---
       if (showOcclusion || showIG) {
         console.log("--- START EXPLAINABILITY ---");
+        
         const fetchExplanation = async (isCropped: boolean) => {
           const fd = new FormData();
           fd.append("image", selectedFile);
-          fd.append("use_crop", isCropped ? "true" : "false");
+          // Nota: la tua API aspetta window_size e stride, puoi aggiungerli qui se vuoi personalizzarli
+          fd.append("window_size", "15");
+          fd.append("stride", "8");
           fd.append("model_name", selectedModel6Class);
 
-          const requests = [];
-          if (showOcclusion) requests.push(fetch(`${BASE_API_URL}/generate_occlusion`, { method: "POST", body: fd }));
-          if (showIG) requests.push(fetch(`${BASE_API_URL}/generate_explain`, { method: "POST", body: fd }));
-
           try {
-            const responses = await Promise.all(requests);
-            for (const res of responses) {
-              if (res.ok) {
-                const data = await res.json();
-                if (data.method === 'occlusion') {
-                  if (isCropped) finalData.occlusion_cropped = data.explanation_image;
-                  else finalData.occlusion = data.explanation_image;
-                } else if (data.method === 'integrated_gradients') {
-                  if (isCropped) finalData.integrated_gradients_cropped = data.explanation_image;
-                  else finalData.integrated_gradients = data.explanation_image;
-                }
+            // Chiamata all'endpoint unico
+            const res = await fetch(`${BASE_API_URL}/generate_explainability`, { 
+              method: "POST", 
+              body: fd 
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              // L'API ora restituisce un'unica stringa base64 con entrambi i grafici affiancati
+              if (isCropped) {
+                finalData.explanation_combined_cropped = data.explanation_image;
+              } else {
+                finalData.explanation_combined = data.explanation_image;
               }
             }
-          } catch (e) { console.error("XAI Fetch error:", e); }
+          } catch (e) { 
+            console.error("XAI Fetch error:", e); 
+          }
         };
 
         if (cropMode === "compare") {
+          // Se siamo in modalità compare, facciamo comunque due chiamate (una per l'originale, una per il crop)
+          // ma ognuna di esse ora ottiene il set completo di spiegazioni
           await Promise.all([fetchExplanation(false), fetchExplanation(true)]);
         } else {
           await fetchExplanation(cropMode === "external");

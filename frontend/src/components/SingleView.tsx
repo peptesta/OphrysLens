@@ -158,31 +158,25 @@ export default function SingleView({ result, preview, mode, useGpu, strategyName
           </div>
         </div>
 
-        {/* Visual Explanation (Heatmaps) */}
-        {useGpu && (result.integrated_gradients || result.occlusion) && (
+        {(result.explanation_combined) && (
           <div className="bg-stone-50 p-6 rounded-xl border border-stone-200 shadow-inner">
             <h3 className="font-bold text-emerald-900 mb-6 flex items-center gap-2">
-               🧠 Visual Explanation
+              🧠 Visual Explanation (Occlusion + Integrated Gradients)
             </h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {result.integrated_gradients && (
-                <div 
-                    className="relative w-full h-[350px] bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200 cursor-zoom-in hover:border-emerald-500 transition-colors group"
-                    onClick={() => handleImageClick(`data:image/jpeg;base64,${result.integrated_gradients}`, "Integrated Gradients")}
-                >
-                  <p className="absolute top-2 left-2 z-10 bg-stone-900/80 text-white px-3 py-1 text-[10px] rounded font-bold backdrop-blur-sm uppercase">IG Map</p>
-                  <Image src={`data:image/jpeg;base64,${result.integrated_gradients}`} alt="IG" fill className="object-contain p-2 group-hover:scale-105 transition-transform" />
-                </div>
-              )}
-              {result.occlusion && (
-                <div 
-                    className="relative w-full h-[350px] bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200 cursor-zoom-in hover:border-emerald-500 transition-colors group"
-                    onClick={() => handleImageClick(`data:image/jpeg;base64,${result.occlusion}`, "Occlusion Map")}
-                >
-                  <p className="absolute top-2 left-2 z-10 bg-stone-900/80 text-white px-3 py-1 text-[10px] rounded font-bold backdrop-blur-sm uppercase">Occlusion</p>
-                  <Image src={`data:image/jpeg;base64,${result.occlusion}`} alt="Occ" fill className="object-contain p-2 group-hover:scale-105 transition-transform" />
-                </div>
-              )}
+            <div 
+                className="relative w-full h-[450px] bg-white rounded-lg overflow-hidden shadow-sm border border-stone-200 cursor-zoom-in hover:border-emerald-500 transition-colors group"
+                onClick={() => handleImageClick(`data:image/png;base64,${result.explanation_combined}`, "Visual Explanation Analysis")}
+            >
+              <Image 
+                src={`data:image/png;base64,${result.explanation_combined}`} 
+                alt="XAI Combined" 
+                fill 
+                className="object-contain p-4 group-hover:scale-[1.02] transition-transform" 
+                unoptimized
+              />
+              <div className="absolute bottom-4 right-4 bg-stone-900/60 backdrop-blur-md text-white text-[9px] px-3 py-1 rounded-full font-bold uppercase tracking-tighter">
+                Combined view
+              </div>
             </div>
           </div>
         )}

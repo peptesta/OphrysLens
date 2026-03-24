@@ -4,21 +4,23 @@ export interface ApiResponse {
   predicted_class: string;
   confidence: number;
   all_classes_probs: number[];
-  image?: string; // Base64 of original image
-  image_cropped?: string; // Base64 of the crop
+  image?: string; 
+  image_cropped?: string; 
   
-  // Explainability fields (Original/Primary)
+  // --- NUOVI CAMPI COMBINATI ---
+  explanation_combined?: string | null; 
+  explanation_combined_cropped?: string | null;
+
+  // Vecchi campi (opzionali se vuoi migrare gradualmente)
   integrated_gradients?: string | null; 
   occlusion?: string | null; 
 
-  // Comparison/Secondary fields (The ones causing the error)
   predicted_class_cropped?: string;
   confidence_cropped?: number;
   all_classes_probs_cropped?: number[];
   integrated_gradients_cropped?: string | null; 
   occlusion_cropped?: string | null; 
 
-  // Error handling
   error?: string;
   traceback?: string;
 }

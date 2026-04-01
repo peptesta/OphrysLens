@@ -11,11 +11,11 @@ interface SingleViewProps {
   result: ApiResponse;
   preview: string;
   mode: string; 
-  useGpu: boolean;
+  useGpu?: boolean;
   strategyName: string;
 }
 
-export default function SingleView({ result, preview, mode, useGpu, strategyName }: SingleViewProps) {
+export default function SingleView({ result, preview, mode, strategyName }: SingleViewProps) {
   const [showMetadata, setShowMetadata] = useState(false);
   const [fullscreenImg, setFullscreenImg] = useState<{src: string, label: string} | null>(null);
   

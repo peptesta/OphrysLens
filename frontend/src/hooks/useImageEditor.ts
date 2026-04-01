@@ -115,6 +115,8 @@ export function useImageEditor(
     setMergeSelection([]);
   }
 
+  const isDraggingRef = useRef(false);
+
   // --- CONFLICT DETECTION ---
   useEffect(() => {
     if (isResizing || currentDrawingBox) return;
@@ -125,7 +127,11 @@ export function useImageEditor(
 
   // --- HANDLERS ---
 
-  const toggleBox = (index: number) => {
+const toggleBox = (index: number) => {
+    // Se abbiamo appena finito di trascinare, blocchiamo il toggle 
+    // per evitare che il "click" di rilascio deselezioni la box
+    if (isDraggingRef.current) return;
+
     if (isMergeMode) {
       if (localEliminated[index]) return; 
       setMergeSelection(prev => {
@@ -133,9 +139,11 @@ export function useImageEditor(
         return [...prev, index];
       });
     } else {
+      // Se clicchi la stessa box, la deseleziona (standard), 
+      // ma ora protetto dal flag sopra.
       setActiveBoxIndex((prev) => (prev === index ? null : index));
     }
-  };
+};
 
   const handleApplySuggestion = (indices: number[]) => {
       setIsMergeMode(true);
@@ -197,34 +205,40 @@ export function useImageEditor(
     if (!imgElementRef.current || !imgNaturalSize) return;
 
     const rect = imgElementRef.current.getBoundingClientRect();
-    const scaleX = imgNaturalSize.w / rect.width;
-    const scaleY = imgNaturalSize.h / rect.height;
-    const relativeX = (e.clientX - rect.left) * scaleX;
-    const relativeY = (e.clientY - rect.top) * scaleY;
-    const curX = Math.max(0, Math.min(imgNaturalSize.w, relativeX));
-    const curY = Math.max(0, Math.min(imgNaturalSize.h, relativeY));
+    
+    // 1. Ottieni la posizione del mouse RELATIVA al rettangolo visualizzato (0 a 1)
+    const normX = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+    const normY = Math.max(0, Math.min(1, (e.clientY - rect.top) / rect.height));
 
-    // Resize
+    // Resize logic
     if (isResizing && resizeRef.current && activeBoxIndex !== null) {
         const { handle } = resizeRef.current;
-        const currentBox = [...localBoxes[activeBoxIndex]];
-        const newBox = [...currentBox];
-        if (handle.includes('w')) newBox[0] = Math.min(curX, currentBox[2] - 5); 
-        if (handle.includes('e')) newBox[2] = Math.max(curX, currentBox[0] + 5);
-        if (handle.includes('n')) newBox[1] = Math.min(curY, currentBox[3] - 5); 
-        if (handle.includes('s')) newBox[3] = Math.max(curY, currentBox[1] + 5);
+        const newBox = [...localBoxes[activeBoxIndex]];
+        
+        // Ora normX e normY sono valori tra 0 e 1 (es. 0.5 per il centro)
+        if (handle.includes('w')) newBox[0] = Math.min(normX, newBox[2] - 0.01); 
+        if (handle.includes('e')) newBox[2] = Math.max(normX, newBox[0] + 0.01);
+        if (handle.includes('n')) newBox[1] = Math.min(normY, newBox[3] - 0.01); 
+        if (handle.includes('s')) newBox[3] = Math.max(normY, newBox[1] + 0.01);
 
-        setLocalBoxes(prev => { const next = [...prev]; next[activeBoxIndex] = newBox; return next; });
-        setLocalModified(prev => { const next = [...prev]; next[activeBoxIndex] = true; return next; });
+        setLocalBoxes(prev => {
+            const next = [...prev];
+            next[activeBoxIndex] = newBox;
+            return next;
+        });
+        setLocalModified(prev => {
+            const next = [...prev];
+            next[activeBoxIndex] = true;
+            return next;
+        });
     }
-
-    // Draw
     if (isDrawingMode && drawingStartRef.current) {
         const startX = drawingStartRef.current.x;
         const startY = drawingStartRef.current.y;
+        
         setCurrentDrawingBox([
-            Math.min(startX, curX), Math.min(startY, curY),
-            Math.max(startX, curX), Math.max(startY, curY)
+            Math.min(startX, normX), Math.min(startY, normY),
+            Math.max(startX, normX), Math.max(startY, normY)
         ]);
     }
   }, [isResizing, activeBoxIndex, isDrawingMode, imgNaturalSize, localBoxes]);
@@ -241,24 +255,49 @@ export function useImageEditor(
     }
   };
 
+
   const handleContainerMouseUp = () => {
-    if (isResizing) {
-        setIsResizing(false);
-        resizeRef.current = null;
-    }
-    if (isDrawingMode && currentDrawingBox) {
-        const [x1, y1, x2, y2] = currentDrawingBox;
-        if ((x2 - x1) > 5 && (y2 - y1) > 5) {
-            setLocalBoxes(prev => [...prev, currentDrawingBox]);
-            setLocalModified(prev => [...prev, false]); 
-            setLocalEliminated(prev => [...prev, false]);
-            setLocalIsManual(prev => [...prev, true]); 
-            setLocalScores(prev => [...prev, 1.0]); 
-            setActiveBoxIndex(localBoxes.length); 
-        }
-        setCurrentDrawingBox(null);
-        drawingStartRef.current = null;
-    }
+      // Se stavamo facendo qualcosa, attiviamo il blocco "isDragging"
+      if (isResizing || (isDrawingMode && currentDrawingBox)) {
+          isDraggingRef.current = true;
+          // Rilasciamo il blocco dopo 100ms, giusto il tempo di far passare l'evento click
+          setTimeout(() => {
+              isDraggingRef.current = false;
+          }, 100);
+      }
+
+      // 1. Gestione fine Resize
+      if (isResizing) {
+          setIsResizing(false);
+          resizeRef.current = null;
+          // Non resettiamo activeBoxIndex: la box rimane selezionata
+      }
+
+      // 2. Gestione fine Drawing
+      if (isDrawingMode && currentDrawingBox) {
+          const [x1, y1, x2, y2] = currentDrawingBox;
+          
+          // Verifica dimensione minima (es. 0.5% dell'immagine)
+          if ((x2 - x1) > 0.005 && (y2 - y1) > 0.005) {
+              const newBox = [...currentDrawingBox];
+              
+              // Usiamo il functional update per essere sicuri dell'indice
+              setLocalBoxes(prev => {
+                  const next = [...prev, newBox];
+                  // Selezioniamo automaticamente la nuova box creata
+                  setActiveBoxIndex(next.length - 1); 
+                  return next;
+              });
+
+              setLocalModified(prev => [...prev, true]); 
+              setLocalEliminated(prev => [...prev, false]);
+              setLocalIsManual(prev => [...prev, true]); 
+              setLocalScores(prev => [...prev, 1.0]); 
+          }
+          
+          setCurrentDrawingBox(null);
+          drawingStartRef.current = null;
+      }
   };
 
   const handleDiscardChanges = () => {
